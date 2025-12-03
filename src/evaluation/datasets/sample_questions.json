@@ -1,0 +1,16 @@
+[
+  {
+    "question": "Who scored the most points in the reports?",
+    "expected_answer": "Mock expected answer",
+    "reference_context": ["Report chunk 1"],
+    "category": "simple",
+    "type": "text-only"
+  },
+  {
+    "question": "Average rebounds for player X in the last 5 games?",
+    "expected_answer": "Numeric mock",
+    "reference_context": ["stats"],
+    "category": "numeric",
+    "type": "stats-only"
+  }
+]
