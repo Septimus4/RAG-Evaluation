@@ -1,135 +1,81 @@
-# Assistant RAG avec Mistral
+# SportSee RAG Evaluation Stack
 
-Ce projet implémente un assistant virtuel basé sur le modèle Mistral, utilisant la technique de Retrieval-Augmented Generation (RAG) pour fournir des réponses précises et contextuelles à partir d'une base de connaissances personnalisée.
+This repository contains a modular Retrieval Augmented Generation (RAG) assistant for SportSee basketball analytics. The project demonstrates how to combine unstructured match reports with structured match statistics in SQLite, instrument the pipeline with Pydantic Logfire, and evaluate quality with RAGAS.
 
-## Fonctionnalités
+## Architecture
 
-- 🔍 **Recherche sémantique** avec FAISS pour trouver les documents pertinents
-- 🤖 **Génération de réponses** avec les modèles Mistral (Small ou Large)
-- ⚙️ **Paramètres personnalisables** (modèle, nombre de documents, score minimum)
+- **Data pipeline (`src/data_pipeline`)** – text ingestion, chunking, and TF-IDF indexing used for the prototype retriever.
+- **RAG core (`src/rag`)** – Pydantic models, vector store wrapper, retriever helpers, LLM client, and the `run_rag_pipeline` orchestration entrypoint.
+- **Structured data (`src/db`)** – SQLAlchemy schema for players, matches, stats, and reports; Pydantic validators; Excel ingestion CLI; SQL tool for validated NL→SQL queries.
+- **Evaluation (`src/evaluation`)** – sample dataset and `evaluate_ragas.py` script for running the pipeline and persisting metrics.
+- **UI prototype** – the original Streamlit app (`MistralChat.py`) remains available for reference.
+- **Observability** – optional Pydantic Logfire hooks across ingestion, retrieval, LLM, SQL tool, and evaluation steps.
 
-## Prérequis
+## Setup
 
-- Python 3.9+ 
-- Clé API Mistral (obtenue sur [console.mistral.ai](https://console.mistral.ai/))
+1. **Prerequisites**
+   - Python 3.11+
+   - SQLite (default) or PostgreSQL URL provided via `DATABASE_URL`.
+2. **Environment**
+   ```bash
+   python -m venv .venv
+   source .venv/bin/activate
+   pip install -r requirements.txt
+   ```
+3. **Configuration**
+   Copy `.env.example` to `.env` and fill in:
+   - `MISTRAL_API_KEY` (or leave empty to use mock LLM responses)
+   - `DATABASE_URL`
+   - `LOGFIRE_TOKEN` if Logfire is available
 
-## Installation
+## Data preparation
 
-1. **Cloner le dépôt**
-
-```bash
-git clone <url-du-repo>
-cd <nom-du-repo>
-```
-
-2. **Créer un environnement virtuel**
-
-```bash
-# Création de l'environnement virtuel
-python -m venv venv
-
-# Activation de l'environnement virtuel
-# Sur Windows
-venv\Scripts\activate
-# Sur macOS/Linux
-source venv/bin/activate
-```
-
-3. **Installer les dépendances**
+The structured schema lives in `src/db/schema.py`. To validate and ingest Excel exports into SQLite:
 
 ```bash
-pip install -r requirements.txt
+python -m db.load_excel_to_db \
+  --players-path /path/to/players.xlsx \
+  --matches-path /path/to/matches.xlsx \
+  --stats-path /path/to/stats.xlsx \
+  --reports-path /path/to/reports.xlsx \
+  --database-url sqlite:///./sportsee.db
 ```
 
-4. **Configurer la clé API**
+Use `--dry-run` to validate without writing data. After ingestion, inspect tables with any SQLite browser or `sqlite3 sportsee.db "SELECT COUNT(*) FROM players;"`.
 
-Créez un fichier `.env` à la racine du projet avec le contenu suivant :
+## Running the assistant
 
-```
-MISTRAL_API_KEY=votre_clé_api_mistral
-```
+The `run_rag_pipeline` function is the canonical entrypoint for the instrumented pipeline:
 
-## Structure du projet
+```python
+from pathlib import Path
+from rag.pipeline import run_rag_pipeline
+from db.sql_tool import SQLTool
 
-```
-.
-├── MistralChat.py          # Application Streamlit principale
-├── indexer.py              # Script pour indexer les documents
-├── inputs/                 # Dossier pour les documents sources
-├── vector_db/              # Dossier pour l'index FAISS et les chunks
-├── database/               # Base de données SQLite pour les interactions
-└── utils/                  # Modules utilitaires
-    ├── config.py           # Configuration de l'application
-    ├── database.py         # Gestion de la base de données
-    └── vector_store.py     # Gestion de l'index vectoriel
-
+answer = run_rag_pipeline(
+    "Who led the rebounds last night?",
+    data_dir=Path("inputs"),
+    sql_tool=SQLTool(database_url="sqlite:///./sportsee.db"),
+)
+print(answer.answer)
 ```
 
-## Utilisation
+- Purely textual questions rely on the retriever + LLM.
+- Numeric/statistical questions trigger the SQL tool and return structured summaries.
 
-### 1. Ajouter des documents
+## Evaluation
 
-Placez vos documents dans le dossier `inputs/`. Les formats supportés sont :
-- PDF
-- TXT
-- DOCX
-- CSV
-- JSON
-
-Vous pouvez organiser vos documents dans des sous-dossiers pour une meilleure organisation.
-
-### 2. Indexer les documents
-
-Exécutez le script d'indexation pour traiter les documents et créer l'index FAISS :
+A starter dataset lives at `src/evaluation/datasets/sample_questions.json`. Run the evaluation harness:
 
 ```bash
-python indexer.py
+python -m evaluation.evaluate_ragas --dataset src/evaluation/datasets/sample_questions.json
 ```
 
-Ce script va :
-1. Charger les documents depuis le dossier `inputs/`
-2. Découper les documents en chunks
-3. Générer des embeddings avec Mistral
-4. Créer un index FAISS pour la recherche sémantique
-5. Sauvegarder l'index et les chunks dans le dossier `vector_db/`
+The script saves per-question outputs to `src/evaluation/results/` and writes RAGAS metrics when the dependency is available.
 
-### 3. Lancer l'application
+## Limitations and future work
 
-```bash
-streamlit run MistralChat.py
-```
-
-L'application sera accessible à l'adresse http://localhost:8501 dans votre navigateur.
-
-
-## Modules principaux
-
-### `utils/vector_store.py`
-
-Gère l'index vectoriel FAISS et la recherche sémantique :
-- Chargement et découpage des documents
-- Génération des embeddings avec Mistral
-- Création et interrogation de l'index FAISS
-
-### `utils/query_classifier.py`
-
-Détermine si une requête nécessite une recherche RAG :
-- Analyse des mots-clés
-- Classification avec le modèle Mistral
-- Détection des questions spécifiques vs générales
-
-### `utils/database.py`
-
-Gère la base de données SQLite pour les interactions :
-- Enregistrement des questions et réponses
-- Stockage des feedbacks utilisateurs
-- Récupération des statistiques
-
-## Personnalisation
-
-Vous pouvez personnaliser l'application en modifiant les paramètres dans `utils/config.py` :
-- Modèles Mistral utilisés
-- Taille des chunks et chevauchement
-- Nombre de documents par défaut
-- Nom de la commune ou organisation
-
+- The TF-IDF vector store is a lightweight placeholder; swap for a persistent FAISS/Chroma index for production.
+- SQL generation is intentionally conservative and should be expanded with richer NL→SQL prompting and guardrails.
+- Evaluation datasets are illustrative; populate them with real SportSee questions and ground truth to obtain meaningful metrics.
+- Logfire hooks are optional and only active when the dependency and token are provided.
