@@ -10,12 +10,12 @@ import typer
 from rag.retriever import build_retriever
 from rag.vector_store import TfidfVectorStore
 
-from .ingestion import RawDocument, load_text_documents, to_chunks
-
 try:  # pragma: no cover
     import logfire
 except Exception:  # pragma: no cover
     logfire = None
+
+from .ingestion import RawDocument, load_text_documents, to_chunks
 
 
 app = typer.Typer(add_completion=False)
@@ -37,8 +37,14 @@ def build_index(input_dir: Path = typer.Option(Path("inputs"), help="Directory w
 def get_retriever_from_dir(input_dir: Path = Path("inputs")) -> TfidfVectorStore:
     raw_docs = load_text_documents(input_dir)
     if not raw_docs:
-        # Provide a minimal corpus so the pipeline remains runnable out of the box
-        raw_docs = [RawDocument(path=input_dir / "starter.txt", text="SportSee RAG starter corpus for evaluation.")]
+        # Ensure inputs directory exists and seed a starter file so pipeline runs
+        input_dir.mkdir(parents=True, exist_ok=True)
+        starter = input_dir / "starter.txt"
+        try:
+            starter.write_text("SportSee RAG starter corpus for evaluation.", encoding="utf-8")
+        except Exception:
+            pass
+        raw_docs = [RawDocument(path=starter, text=starter.read_text(encoding="utf-8"))]
     chunks = to_chunks(raw_docs)
     return build_retriever(chunks)
 

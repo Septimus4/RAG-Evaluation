@@ -1,10 +1,10 @@
 """Core data models for the RAG pipeline."""
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Any, List, Optional
 
-from pydantic import BaseModel, Field, HttpUrl
+from pydantic import BaseModel, Field
 
 
 class DocumentChunk(BaseModel):
@@ -39,7 +39,7 @@ class AnswerPayload(BaseModel):
     context_documents: List[DocumentChunk]
     reasoning: Optional[str] = None
     used_sql: bool = False
-    retrieved_at: datetime = Field(default_factory=datetime.utcnow)
+    retrieved_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
     model: Optional[str] = None
 
 

@@ -1,10 +1,10 @@
 # MistralChat.py (version RAG)
-import streamlit as st
-import os
 import logging
-from mistralai.client import MistralClient
-from mistralai.models.chat_completion import ChatMessage
+import os
+
+import streamlit as st
 from dotenv import load_dotenv
+from mistralai import Mistral, MistralError
 
 # --- Importations depuis vos modules ---
 try:
@@ -31,11 +31,15 @@ if not api_key:
     st.stop()
 
 try:
-    client = MistralClient(api_key=api_key)
+    client = Mistral(api_key=api_key)
     logging.info("Client Mistral initialisé.")
-except Exception as e:
+except MistralError as e:
     st.error(f"Erreur lors de l'initialisation du client Mistral : {e}")
     logging.exception("Erreur initialisation client Mistral")
+    st.stop()
+except Exception as e:
+    st.error(f"Erreur inattendue lors de l'initialisation du client Mistral : {e}")
+    logging.exception("Erreur inattendue initialisation client Mistral")
     st.stop()
 
 # --- Chargement du Vector Store (mis en cache) ---
@@ -86,7 +90,7 @@ if "messages" not in st.session_state:
 
 # --- Fonctions ---
 
-def generer_reponse(prompt_messages: list[ChatMessage]) -> str:
+def generer_reponse(prompt_messages: list[dict]) -> str:
     """
     Envoie le prompt (qui inclut maintenant le contexte) à l'API Mistral.
     """
@@ -98,11 +102,10 @@ def generer_reponse(prompt_messages: list[ChatMessage]) -> str:
         # Log le contenu du prompt (peut être long) - commenter si trop verbeux
         # logging.debug(f"Prompt envoyé à l'API: {prompt_messages}")
 
-        response = client.chat(
+        response = client.chat.complete(
             model=model,
             messages=prompt_messages,
             temperature=0.1, # Température basse pour des réponses factuelles basées sur le contexte
-            # top_p=0.9,
         )
         if response.choices and len(response.choices) > 0:
             logging.info("Réponse reçue de l'API Mistral.")
@@ -110,6 +113,10 @@ def generer_reponse(prompt_messages: list[ChatMessage]) -> str:
         else:
             logging.warning("L'API n'a pas retourné de choix valide.")
             return "Désolé, je n'ai pas pu générer de réponse valide pour le moment."
+    except MistralError as e:
+        st.error(f"Erreur lors de l'appel à l'API Mistral: {e}")
+        logging.exception("Erreur API Mistral pendant client.chat")
+        return "Je suis désolé, une erreur technique m'empêche de répondre. Veuillez réessayer plus tard."
     except Exception as e:
         st.error(f"Erreur lors de l'appel à l'API Mistral: {e}")
         logging.exception("Erreur API Mistral pendant client.chat")
@@ -165,8 +172,7 @@ if prompt := st.chat_input(f"Posez votre question sur la {NAME}..."):
 
     # Créer la liste de messages pour l'API (juste le prompt système/utilisateur combiné)
     messages_for_api = [
-        # On pourrait séparer system et user, mais Mistral gère bien un long message user structuré
-        ChatMessage(role="user", content=final_prompt_for_llm)
+        {"role": "user", "content": final_prompt_for_llm}
     ]
 
     # === Fin de la logique RAG ===

@@ -1,12 +1,12 @@
 # utils/vector_store.py
+import logging
 import os
 import pickle
+from typing import Dict, List, Optional
+
 import faiss
 import numpy as np
-import logging
-from typing import List, Dict, Tuple, Optional
-from mistralai.client import MistralClient
-from mistralai.exceptions import MistralAPIException
+from mistralai import Mistral, MistralError
 from langchain.text_splitter import RecursiveCharacterTextSplitter
 from langchain_core.documents import Document # Utilisé pour le format attendu par le splitter
 
@@ -23,7 +23,16 @@ class VectorStoreManager:
     def __init__(self):
         self.index: Optional[faiss.Index] = None
         self.document_chunks: List[Dict[str, any]] = []
-        self.mistral_client = MistralClient(api_key=MISTRAL_API_KEY)
+        self.mistral_client = None
+        if not MISTRAL_API_KEY:
+            logging.warning("MISTRAL_API_KEY not set; embedding generation disabled.")
+        else:
+            try:
+                self.mistral_client = Mistral(api_key=MISTRAL_API_KEY)
+            except MistralError as exc:  # pragma: no cover - network/config failure
+                logging.error(f"Impossible d'initialiser le client Mistral: {exc}")
+            except Exception as exc:  # pragma: no cover - unexpected failure
+                logging.error(f"Erreur inattendue lors de l'initialisation du client Mistral: {exc}")
         self._load_index_and_chunks()
 
     def _load_index_and_chunks(self):
@@ -80,8 +89,8 @@ class VectorStoreManager:
 
     def _generate_embeddings(self, chunks: List[Dict[str, any]]) -> Optional[np.ndarray]:
         """Génère les embeddings pour une liste de chunks via l'API Mistral."""
-        if not MISTRAL_API_KEY:
-            logging.error("Impossible de générer les embeddings: MISTRAL_API_KEY manquante.")
+        if not self.mistral_client:
+            logging.error("Impossible de générer les embeddings: client Mistral non initialisé.")
             return None
         if not chunks:
             logging.warning("Aucun chunk fourni pour générer les embeddings.")
@@ -98,43 +107,33 @@ class VectorStoreManager:
 
             logging.info(f"  Traitement du lot {batch_num}/{total_batches} ({len(texts_to_embed)} chunks)")
             try:
-                response = self.mistral_client.embeddings(
+                response = self.mistral_client.embeddings.create(
                     model=EMBEDDING_MODEL,
-                    input=texts_to_embed
+                    inputs=texts_to_embed
                 )
                 batch_embeddings = [data.embedding for data in response.data]
                 all_embeddings.extend(batch_embeddings)
-            except MistralAPIException as e:
-                logging.error(f"Erreur API Mistral lors de la génération d'embeddings (lot {batch_num}): {e}")
-                logging.error(f"  Détails: Status Code={e.status_code}, Message={e.message}")
-            except Exception as e:
-                logging.error(f"Erreur inattendue lors de la génération d'embeddings (lot {batch_num}): {e}")
-                 # Gérer l'erreur: ici on ajoute des vecteurs nuls pour ne pas bloquer
-                num_failed = len(texts_to_embed)
-                if all_embeddings: # Si on a déjà des embeddings, on prend la dimension du premier
-                    dim = len(all_embeddings[0])
-                else: # Sinon, on ne peut pas déterminer la dimension, on saute ce lot
-                     logging.error("Impossible de déterminer la dimension des embeddings, saut du lot.")
-                     continue
-                logging.warning(f"Ajout de {num_failed} vecteurs nuls de dimension {dim} pour le lot échoué.")
-                all_embeddings.extend([np.zeros(dim, dtype='float32')] * num_failed)
-
-            except Exception as e:
-                logging.error(f"Erreur inattendue lors de la génération d'embeddings (lot {batch_num}): {e}")
-                # Gérer comme ci-dessus
-                num_failed = len(texts_to_embed)
-                if all_embeddings:
-                    dim = len(all_embeddings[0])
-                else:
-                     logging.error("Impossible de déterminer la dimension des embeddings, saut du lot.")
-                     continue
-                logging.warning(f"Ajout de {num_failed} vecteurs nuls de dimension {dim} pour le lot échoué.")
-                all_embeddings.extend([np.zeros(dim, dtype='float32')] * num_failed)
+            except MistralError as exc:
+                logging.error(f"Erreur API Mistral lors de la génération d'embeddings (lot {batch_num}): {exc}")
+                dim = len(all_embeddings[0]) if all_embeddings else None
+                if dim is None:
+                    logging.error("Impossible de déterminer la dimension des embeddings, saut du lot.")
+                    continue
+                logging.warning(f"Ajout de {len(texts_to_embed)} vecteurs nuls de dimension {dim} pour le lot échoué.")
+                all_embeddings.extend([np.zeros(dim, dtype='float32')] * len(texts_to_embed))
+            except Exception as exc:
+                logging.error(f"Erreur inattendue lors de la génération d'embeddings (lot {batch_num}): {exc}")
+                dim = len(all_embeddings[0]) if all_embeddings else None
+                if dim is None:
+                    logging.error("Impossible de déterminer la dimension des embeddings, saut du lot.")
+                    continue
+                logging.warning(f"Ajout de {len(texts_to_embed)} vecteurs nuls de dimension {dim} pour le lot échoué.")
+                all_embeddings.extend([np.zeros(dim, dtype='float32')] * len(texts_to_embed))
 
 
         if not all_embeddings:
-             logging.error("Aucun embedding n'a pu être généré.")
-             return None
+            logging.error("Aucun embedding n'a pu être généré.")
+            return None
 
         embeddings_array = np.array(all_embeddings).astype('float32')
         logging.info(f"Embeddings générés avec succès. Shape: {embeddings_array.shape}")
@@ -214,16 +213,16 @@ class VectorStoreManager:
         if self.index is None or not self.document_chunks:
             logging.warning("Recherche impossible: l'index Faiss n'est pas chargé ou est vide.")
             return []
-        if not MISTRAL_API_KEY:
-             logging.error("Recherche impossible: MISTRAL_API_KEY manquante pour générer l'embedding de la requête.")
-             return []
+        if not self.mistral_client:
+            logging.error("Recherche impossible: client Mistral indisponible.")
+            return []
 
         logging.info(f"Recherche des {k} chunks les plus pertinents pour: '{query_text}'")
         try:
             # 1. Générer l'embedding de la requête
-            response = self.mistral_client.embeddings(
+            response = self.mistral_client.embeddings.create(
                 model=EMBEDDING_MODEL,
-                input=[query_text] # La requête doit être une liste
+                inputs=[query_text]
             )
             query_embedding = np.array([response.data[0].embedding]).astype('float32')
 
@@ -280,9 +279,8 @@ class VectorStoreManager:
 
             return results
 
-        except MistralAPIException as e:
+        except MistralError as e:
             logging.error(f"Erreur API Mistral lors de la génération de l'embedding de la requête: {e}")
-            logging.error(f"  Détails: Status Code={e.status_code}, Message={e.message}")
             return []
         except Exception as e:
             logging.error(f"Erreur inattendue lors de la recherche: {e}")

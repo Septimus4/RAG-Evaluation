@@ -1,16 +1,157 @@
 [
   {
-    "question": "Who scored the most points in the reports?",
-    "expected_answer": "Mock expected answer",
-    "reference_context": ["Report chunk 1"],
-    "category": "simple",
-    "type": "text-only"
+    "question": "Which playoff teams impressed you and why?",
+    "expected_answer": "Teams such as the Denver Nuggets impressed due to all-around performance and Nikola Jokic's versatility.",
+    "reference_context": ["inputs/Reddit 1.pdf", "inputs/Reddit 3.pdf"],
+    "category": "factual",
+    "type": "pdf-text"
   },
   {
-    "question": "Average rebounds for player X in the last 5 games?",
-    "expected_answer": "Numeric mock",
-    "reference_context": ["stats"],
+    "question": "Summarize the key talking points from the Reddit playoff discussion.",
+    "expected_answer": "Discussions focused on defensive resilience, poor shooting yet strong team play, and standout performances in the playoffs.",
+    "reference_context": ["inputs/Reddit 2.pdf", "inputs/Reddit 4.pdf"],
+    "category": "summarization",
+    "type": "pdf-text"
+  },
+  {
+    "question": "What is Nikola Jokic's total points, assists, and rebounds from the dataset?",
+    "expected_answer": "Total points: 2072; assists: 714; rebounds: 889 (across 70 games).",
+    "reference_context": ["inputs/regular NBA.xlsx"],
     "category": "numeric",
-    "type": "stats-only"
+    "type": "sql-stats"
+  },
+  {
+    "question": "Compute the average points per game for Nikola Jokic.",
+    "expected_answer": "Approximately 29.6 points per game (2072 points across 70 games).",
+    "reference_context": ["inputs/regular NBA.xlsx"],
+    "category": "numeric",
+    "type": "sql-stats"
+  },
+  {
+    "question": "Which team has the highest win percentage in the regular season dataset?",
+    "expected_answer": "The team listed with the highest win percentage in the provided regular season sheet.",
+    "reference_context": ["inputs/regular NBA.xlsx"],
+    "category": "numeric",
+    "type": "sql-stats"
+  },
+  {
+    "question": "From the Reddit discussions, list two reasons a team impressed despite poor shooting.",
+    "expected_answer": "Strong defense and cohesive team play were highlighted as reasons.",
+    "reference_context": ["inputs/Reddit 1.pdf", "inputs/Reddit 4.pdf"],
+    "category": "factual",
+    "type": "pdf-text"
+  },
+  {
+    "question": "Explain how context from Reddit posts differs from numeric stats in answering playoff performance questions.",
+    "expected_answer": "Reddit posts provide qualitative context and opinions, while stats provide quantitative measures; combining both yields balanced insights.",
+    "reference_context": ["inputs/Reddit 2.pdf", "inputs/regular NBA.xlsx"],
+    "category": "reasoning",
+    "type": "hybrid"
+  },
+  {
+    "question": "Paraphrase: Which teams stood out in the playoffs?",
+    "expected_answer": "Teams like the Nuggets stood out due to versatile performances.",
+    "reference_context": ["inputs/Reddit 3.pdf"],
+    "category": "paraphrase",
+    "type": "pdf-text"
+  },
+  {
+    "question": "What does the starter note say?",
+    "expected_answer": "A brief instruction or note from starter.txt.",
+    "reference_context": ["inputs/starter.txt"],
+    "category": "simple",
+    "type": "txt"
+  },
+  {
+    "question": "Combine: Use stats and Reddit context to justify why a team is impressive.",
+    "expected_answer": "For example, Nuggets: strong stats (points, rebounds, assists) plus Reddit praise for team play and resilience.",
+    "reference_context": ["inputs/regular NBA.xlsx", "inputs/Reddit 1.pdf"],
+    "category": "multi-hop",
+    "type": "hybrid"
+  }
+  ,
+  {
+    "question": "Who led the league in total points according to the workbook?",
+    "expected_answer": "Shai Gilgeous-Alexander led in total points.",
+    "reference_context": ["inputs/regular NBA.xlsx"],
+    "category": "numeric",
+    "type": "sql-stats"
+  },
+  {
+    "question": "Which player recorded the highest total rebounds in the dataset?",
+    "expected_answer": "Nikola Jokic appears among leaders in total rebounds.",
+    "reference_context": ["inputs/regular NBA.xlsx"],
+    "category": "numeric",
+    "type": "sql-stats"
+  },
+  {
+    "question": "Return a brief summary of three-point efficiency leaders (3P%).",
+    "expected_answer": "A list of players with their teams and 3P% ordered by percentage.",
+    "reference_context": ["inputs/regular NBA.xlsx"],
+    "category": "numeric",
+    "type": "sql-stats"
+  },
+  {
+    "question": "Which players combined for high assists and low turnovers (AST and TOV)?",
+    "expected_answer": "Players with high AST and relatively low TOV, summarised from the table.",
+    "reference_context": ["inputs/regular NBA.xlsx"],
+    "category": "numeric",
+    "type": "sql-stats"
+  },
+  {
+    "question": "List the top five players by minutes played (Min).",
+    "expected_answer": "A list of five players with the highest minutes totals.",
+    "reference_context": ["inputs/regular NBA.xlsx"],
+    "category": "numeric",
+    "type": "sql-stats"
+  },
+  {
+    "question": "Compare free throw efficiency (FT%) among top scorers.",
+    "expected_answer": "A short comparison noting which top scorers have higher FT%.",
+    "reference_context": ["inputs/regular NBA.xlsx"],
+    "category": "reasoning",
+    "type": "sql-stats"
+  },
+  {
+    "question": "From the Reddit posts, what qualities were praised in the Nuggets' run?",
+    "expected_answer": "Team cohesion, versatility, and consistent two-way impact were praised.",
+    "reference_context": ["inputs/Reddit 1.pdf", "inputs/Reddit 3.pdf"],
+    "category": "factual",
+    "type": "pdf-text"
+  },
+  {
+    "question": "Synthesize: Use stats (PTS, AST, REB) and Reddit context to argue MVP candidates.",
+    "expected_answer": "Candidates like Nikola Jokic and Shai Gilgeous-Alexander, supported by strong box stats and qualitative impact.",
+    "reference_context": ["inputs/regular NBA.xlsx", "inputs/Reddit 2.pdf"],
+    "category": "multi-hop",
+    "type": "hybrid"
+  },
+  {
+    "question": "Which team abbreviations appear most among the top 10 scorers?",
+    "expected_answer": "A small set of team codes (e.g., OKC, MIN, DEN) appearing in the top scorers list.",
+    "reference_context": ["inputs/regular NBA.xlsx"],
+    "category": "numeric",
+    "type": "sql-stats"
+  },
+  {
+    "question": "Find players with high usage (USG%) and efficient shooting (TS%).",
+    "expected_answer": "Players balancing high USG% with high TS% as per the workbook.",
+    "reference_context": ["inputs/regular NBA.xlsx"],
+    "category": "numeric",
+    "type": "sql-stats"
+  },
+  {
+    "question": "Paraphrase: Summarize postseason surprises from Reddit discussions.",
+    "expected_answer": "Unexpected team runs, standout role-player performances, and coaching adjustments were noted.",
+    "reference_context": ["inputs/Reddit 2.pdf", "inputs/Reddit 4.pdf"],
+    "category": "paraphrase",
+    "type": "pdf-text"
+  },
+  {
+    "question": "What metrics in the workbook best support claims about defensive impact?",
+    "expected_answer": "DEFRTG, STL, BLK, and DREB provide a quantitative basis for defensive impact.",
+    "reference_context": ["inputs/regular NBA.xlsx"],
+    "category": "reasoning",
+    "type": "sql-stats"
   }
 ]

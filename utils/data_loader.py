@@ -9,29 +9,12 @@ import logging
 import numpy as np
 from tqdm import tqdm # Ajout de tqdm
 
-# --- Importations pour OCR ---
-try:
-    import fitz  # PyMuPDF
-    from PIL import Image
-    import easyocr
-
-    # Initialiser le lecteur EasyOCR une seule fois
-    logging.info("Initialisation du lecteur EasyOCR...")
-    reader = easyocr.Reader(['en', 'fr']) 
-    logging.info("Lecteur EasyOCR initialisé.")
-
-except ImportError as e:
-    logging.warning(f"Modules OCR (PyMuPDF, Pillow, easyocr) non installés ou erreur: {e}. L'OCR pour PDF ne sera pas disponible.")
-    fitz = None
-    Image = None
-    easyocr = None
-    reader = None
-except Exception as e:
-    logging.error(f"Erreur inattendue lors du chargement des modules/modèle OCR: {e}")
-    fitz = None
-    Image = None
-    easyocr = None
-    reader = None
+# --- OCR: chargement différé pour éviter les erreurs à l'import ---
+fitz = None
+Image = None
+easyocr = None
+reader = None
+tesseract = None
 
 # Configuration du logging
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
@@ -40,9 +23,24 @@ logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(
 
 def extract_text_from_pdf_with_ocr(file_path: str) -> Optional[str]:
     """Extrait le texte d'un fichier PDF en utilisant l'OCR (EasyOCR)."""
-    if not fitz or not reader:
-        logging.warning("Modules/Modèle OCR non disponibles. Impossible d'effectuer l'OCR.")
-        return None
+    global fitz, Image, easyocr, reader
+    # Chargement paresseux des dépendances OCR
+    if fitz is None or Image is None or easyocr is None or reader is None:
+        try:
+            import fitz as _fitz  # PyMuPDF
+            from PIL import Image as _Image
+            import easyocr as _easyocr
+            fitz, Image, easyocr = _fitz, _Image, _easyocr
+            logging.info("Initialisation du lecteur EasyOCR (lazy)...")
+            # Désactive le GPU par défaut pour la compatibilité en conteneur
+            reader = easyocr.Reader(['en', 'fr'], gpu=False, download_enabled=True)
+            logging.info("Lecteur EasyOCR initialisé.")
+        except ImportError as e:
+            logging.warning(f"Modules OCR (PyMuPDF, Pillow, easyocr) non installés: {e}. L'OCR n'est pas disponible.")
+            return None
+        except Exception as e:
+            logging.error(f"Erreur inattendue lors de l'initialisation OCR: {e}")
+            return None
 
     text_content = []
     try:
@@ -75,33 +73,121 @@ def extract_text_from_pdf_with_ocr(file_path: str) -> Optional[str]:
         logging.error(f"Erreur lors de l'ouverture ou du traitement OCR du PDF {file_path}: {e}")
         return None
 
+def extract_text_from_pdf_with_pymupdf(file_path: str) -> Optional[str]:
+    """Extrait le texte via PyMuPDF (sans OCR), utile sur certains PDFs.
+    Retourne None si PyMuPDF n'est pas disponible ou si aucun texte utile n'est trouvé.
+    """
+    try:
+        import fitz  # lazy import
+    except Exception as e:
+        logging.debug(f"PyMuPDF indisponible pour {file_path}: {e}")
+        return None
+
+def extract_text_from_pdf_with_tesseract(file_path: str) -> Optional[str]:
+    """OCR via Tesseract (pytesseract) sur rendu image PyMuPDF, CPU-only.
+    Nécessite le binaire système `tesseract-ocr` et le paquet Python `pytesseract`.
+    """
+    global fitz, Image, tesseract
+    try:
+        if fitz is None:
+            import fitz as _fitz
+            fitz = _fitz
+        if Image is None:
+            from PIL import Image as _Image
+            Image = _Image
+        if tesseract is None:
+            import pytesseract as _pytesseract
+            tesseract = _pytesseract
+    except Exception as e:
+        logging.warning(f"Dépendances Tesseract non disponibles: {e}")
+        return None
+    try:
+        doc = fitz.open(file_path)
+        texts = []
+        for page in doc:
+            pix = page.get_pixmap(matrix=fitz.Matrix(2, 2))
+            img = Image.frombytes("RGB", [pix.width, pix.height], pix.samples)
+            try:
+                txt = tesseract.image_to_string(img, lang="eng+fra")
+            except Exception:
+                txt = tesseract.image_to_string(img)
+            if txt and txt.strip():
+                texts.append(txt)
+        doc.close()
+        full = "\n".join(texts).strip()
+        if full:
+            logging.info(f"Texte extrait via Tesseract pour {file_path} ({len(full)} caractères)")
+            return full
+        logging.warning(f"Tesseract n'a pas produit de texte significatif pour {file_path}.")
+        return None
+    except Exception as e:
+        logging.error(f"Erreur OCR Tesseract pour {file_path}: {e}")
+        return None
+    try:
+        doc = fitz.open(file_path)
+        texts = []
+        for page in doc:
+            try:
+                t = page.get_text("text") or ""
+            except Exception:
+                t = ""
+            if t.strip():
+                texts.append(t)
+        doc.close()
+        full = "\n".join(texts).strip()
+        return full if full else None
+    except Exception as e:
+        logging.debug(f"PyMuPDF extraction a échoué pour {file_path}: {e}")
+        return None
+
 def extract_text_from_pdf(file_path: str) -> Optional[str]:
     """Extrait le texte d'un fichier PDF, avec fallback OCR si peu de texte est trouvé."""
     try:
         from PyPDF2 import PdfReader
-        reader = PdfReader(file_path)
-        text = "".join(page.extract_text() + "\n" for page in reader.pages if page.extract_text())
+        _reader = PdfReader(file_path)
+        parts = []
+        for page in _reader.pages:
+            try:
+                t = page.extract_text() or ""
+            except Exception:
+                t = ""
+            if t:
+                parts.append(t + "\n")
+        text = "".join(parts)
         
-        if len(text.strip()) < 100: # Si très peu de texte est extrait, tenter l'OCR
-            logging.info(f"Peu de texte trouvé dans {file_path} via extraction standard ({len(text.strip())} caractères). Tentative d'OCR...")
+        if len(text.strip()) < 100: # Si très peu de texte est extrait, tenter PyMuPDF puis OCR
+            logging.info(f"Peu de texte trouvé dans {file_path} via extraction standard ({len(text.strip())} caractères). Tentative PyMuPDF...")
+            mu_text = extract_text_from_pdf_with_pymupdf(file_path)
+            if mu_text and len(mu_text.strip()) >= 100:
+                logging.info(f"Texte extrait via PyMuPDF pour {file_path} ({len(mu_text)} caractères)")
+                return mu_text
+            logging.info("Tentative d'OCR EasyOCR en dernier recours...")
             ocr_text = extract_text_from_pdf_with_ocr(file_path)
             if ocr_text:
                 return ocr_text
             else:
-                logging.warning(f"L'OCR n'a pas non plus produit de texte significatif pour {file_path}.")
+                logging.info("Tentative OCR Tesseract en dernier recours...")
+                tess_text = extract_text_from_pdf_with_tesseract(file_path)
+                if tess_text:
+                    return tess_text
+                logging.warning(f"L'OCR n'a pas produit de texte significatif pour {file_path}.")
                 return text # Retourne le peu de texte trouvé ou vide
         
         logging.info(f"Texte extrait de PDF: {file_path} ({len(text)} caractères)")
         return text
     except Exception as e:
-        logging.error(f"Erreur extraction PDF {file_path}: {e}. Tentative d'OCR en dernier recours...")
-        # Si l'extraction standard échoue complètement, tenter l'OCR
+        logging.error(f"Erreur extraction PDF {file_path}: {e}. Tentative PyMuPDF puis OCR...")
+        mu_text = extract_text_from_pdf_with_pymupdf(file_path)
+        if mu_text:
+            return mu_text
         ocr_text = extract_text_from_pdf_with_ocr(file_path)
         if ocr_text:
             return ocr_text
-        else:
-            logging.warning(f"L'OCR n'a pas non plus produit de texte significatif après échec de l'extraction standard pour {file_path}.")
-            return None
+        tess_text = extract_text_from_pdf_with_tesseract(file_path)
+        if tess_text:
+            return tess_text
+        logging.warning(f"Impossible d'extraire du texte pour {file_path}.")
+        return None
 
 
 def extract_text_from_docx(file_path: str) -> Optional[str]:
