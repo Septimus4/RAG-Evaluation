@@ -4,7 +4,7 @@ from __future__ import annotations
 from datetime import date
 from typing import Optional
 
-from pydantic import BaseModel, Field, NonNegativeInt, validator
+from pydantic import BaseModel, Field, field_validator
 
 
 class PlayerRow(BaseModel):
@@ -47,9 +47,10 @@ class StatRow(BaseModel):
     turnovers: Optional[int] = Field(default=None, ge=0)
     fouls: Optional[int] = Field(default=None, ge=0)
 
-    @validator("fga")
-    def attempts_non_zero(cls, v, values):  # pragma: no cover - sanity guard
-        made = values.get("fgm")
+    @field_validator("fga")
+    @classmethod
+    def attempts_non_zero(cls, v, info):  # pragma: no cover - sanity guard
+        made = info.data.get("fgm")
         if v is not None and made is not None and made > v:
             raise ValueError("FGM cannot exceed FGA")
         return v

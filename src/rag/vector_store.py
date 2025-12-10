@@ -10,12 +10,12 @@ import numpy as np
 from sklearn.feature_extraction.text import TfidfVectorizer
 from sklearn.metrics.pairwise import cosine_similarity
 
-from .models import DocumentChunk
-
-try:  # pragma: no cover - optional dependency
+try:  # pragma: no cover
     import logfire
 except Exception:  # pragma: no cover
     logfire = None
+
+from .models import DocumentChunk
 
 
 @dataclass
@@ -36,7 +36,11 @@ class TfidfVectorStore:
         self.documents = documents
         duration_ms = (time.perf_counter() - start) * 1000
         if logfire:
-            logfire.info("vector_store.index", count=len(documents), latency_ms=duration_ms)
+            logfire.info(
+                "vector_store.index",
+                count=len(documents),
+                latency_ms=duration_ms,
+            )
         logging.debug("Indexed %s documents in %.2f ms", len(documents), duration_ms)
 
     def search(self, query: str, top_k: int = 5) -> tuple[list[DocumentChunk], list[float], float]:
@@ -48,7 +52,12 @@ class TfidfVectorStore:
         top_indices = np.argsort(sims)[::-1][:top_k]
         duration_ms = (time.perf_counter() - start) * 1000
         if logfire:
-            logfire.info("vector_store.search", top_k=top_k, latency_ms=duration_ms)
+            logfire.info(
+                "vector_store.search",
+                top_k=top_k,
+                latency_ms=duration_ms,
+            )
+        logging.debug("Search top_k=%s completed in %.2f ms", top_k, duration_ms)
         docs = [self.documents[i] for i in top_indices]
         scores = [float(sims[i]) for i in top_indices]
         return docs, scores, duration_ms

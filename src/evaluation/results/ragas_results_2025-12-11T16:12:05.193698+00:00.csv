@@ -1,0 +1,65 @@
+question,model_answer,expected_answer,category,type
+Which playoff teams impressed you and why?,"Based on the provided dataset, the Oklahoma City Thunder and Denver Nuggets stand out as impressive playoff teams for the following reasons:
+
+1. **Oklahoma City Thunder (Shai Gilgeous-Alexander)**:
+   - **Total Points**: 2485 across 76 games, leading the dataset.
+   - **Points Per Game**: 32.7, the highest average in the dataset.
+   - **Assists**: 486, indicating strong playmaking abilities.
+   - **Rebounds**: 380, showing solid contributions on the boards.
+
+2. **Denver Nuggets (Nikola Jokić)**:
+   - **Total Points**: 2072 across 70 games.
+   - **Points Per Game**: 29.6, a high average.
+   - **Assists**: 714, the highest in the dataset, highlighting exceptional playmaking.
+   - **Rebounds**: 889, the highest in the dataset, demonstrating dominance in rebounding.
+
+These statistics suggest that both teams have players who are not only scoring at a high level but also contributing significantly in assists and rebounds, which are crucial for playoff success.
+
+**Sources**:
+- [source=inputs/regular NBA.xlsx]
+- [source=inputs/starter.txt]",Teams such as the Denver Nuggets impressed due to all-around performance and Nikola Jokic's versatility.,factual,pdf-text
+Summarize the key talking points from the Reddit playoff discussion.,"Structured stats answer: Sample row {'player_name': 'Shai Gilgeous-Alexander', 'team': 'OKC', 'points': 2485, 'rebounds_def': None, 'rebounds_off': None, 'assists': 486} (rows=50)","Discussions focused on defensive resilience, poor shooting yet strong team play, and standout performances in the playoffs.",summarization,pdf-text
+"What is Nikola Jokic's total points, assists, and rebounds from the dataset?","Structured stats answer: Sample row {'player_name': 'Shai Gilgeous-Alexander', 'team': 'OKC', 'points': 2485, 'rebounds_def': None, 'rebounds_off': None, 'assists': 486} (rows=50)",Total points: 2072; assists: 714; rebounds: 889 (across 70 games).,numeric,sql-stats
+Compute the average points per game for Nikola Jokic.,"Structured stats answer: Sample row {'player_name': 'Shai Gilgeous-Alexander', 'team': 'OKC', 'points': 2485, 'rebounds_def': None, 'rebounds_off': None, 'assists': 486} (rows=50)",Approximately 29.6 points per game (2072 points across 70 games).,numeric,sql-stats
+Which team has the highest win percentage in the regular season dataset?,"Structured stats answer: Sample row {'player_name': 'Shai Gilgeous-Alexander', 'team': 'OKC', 'points': 2485, 'rebounds_def': None, 'rebounds_off': None, 'assists': 486} (rows=50)",The team listed with the highest win percentage in the provided regular season sheet.,numeric,sql-stats
+"From the Reddit discussions, list two reasons a team impressed despite poor shooting.","Based on the provided context, here are two reasons a team might impress despite poor shooting:
+
+1. **Strong Playmaking and Assists**: Nikola Jokić recorded 714 assists, which is a significant number. This indicates that his team might have struggled with shooting, but they could have impressed with their ball movement and playmaking, leading to open shots for others or facilitating a fast-paced game.
+
+2. **Rebounding**: Nikola Jokić also had 889 total rebounds, which is the highest in the dataset. This suggests that his team might have impressed with their ability to control the boards, leading to second-chance points or limiting their opponents' scoring opportunities.
+
+These points highlight that a team can still make a significant impact on the game through other aspects, even if their shooting performance is not stellar.",Strong defense and cohesive team play were highlighted as reasons.,factual,pdf-text
+Explain how context from Reddit posts differs from numeric stats in answering playoff performance questions.,"Structured stats answer: Sample row {'player_name': 'Shai Gilgeous-Alexander', 'team': 'OKC', 'points': 2485, 'rebounds_def': None, 'rebounds_off': None, 'assists': 486} (rows=50)","Reddit posts provide qualitative context and opinions, while stats provide quantitative measures; combining both yields balanced insights.",reasoning,hybrid
+Paraphrase: Which teams stood out in the playoffs?,"The context provided does not include information about the playoffs. Therefore, I cannot determine which teams stood out in the playoffs based on the given data.",Teams like the Nuggets stood out due to versatile performances.,paraphrase,pdf-text
+What does the starter note say?,"The starter note says: ""SportSee RAG starter corpus for evaluation."" [source=inputs/starter.txt]",A brief instruction or note from starter.txt.,simple,txt
+Combine: Use stats and Reddit context to justify why a team is impressive.,"Structured stats answer: Sample row {'player_name': 'Shai Gilgeous-Alexander', 'team': 'OKC', 'points': 2485, 'rebounds_def': None, 'rebounds_off': None, 'assists': 486} (rows=50)","For example, Nuggets: strong stats (points, rebounds, assists) plus Reddit praise for team play and resilience.",multi-hop,hybrid
+Who led the league in total points according to the workbook?,"Structured stats answer: Sample row {'player_name': 'Shai Gilgeous-Alexander', 'team': 'OKC', 'points': 2485, 'rebounds_def': None, 'rebounds_off': None, 'assists': 486} (rows=50)",Shai Gilgeous-Alexander led in total points.,numeric,sql-stats
+Which player recorded the highest total rebounds in the dataset?,"Structured stats answer: Sample row {'player_name': 'Shai Gilgeous-Alexander', 'team': 'OKC', 'points': 2485, 'rebounds_def': None, 'rebounds_off': None, 'assists': 486} (rows=50)",Nikola Jokic appears among leaders in total rebounds.,numeric,sql-stats
+Return a brief summary of three-point efficiency leaders (3P%).,"Based on the provided context, there is no specific information about three-point efficiency leaders (3P%) in the dataset. The context primarily focuses on total points, assists, rebounds, and points per game averages. Therefore, I cannot provide a summary of three-point efficiency leaders from the given information.
+
+[source=inputs/regular NBA.xlsx]",A list of players with their teams and 3P% ordered by percentage.,numeric,sql-stats
+Which players combined for high assists and low turnovers (AST and TOV)?,"Structured stats answer: Sample row {'player_name': 'Shai Gilgeous-Alexander', 'team': 'OKC', 'points': 2485, 'rebounds_def': None, 'rebounds_off': None, 'assists': 486} (rows=50)","Players with high AST and relatively low TOV, summarised from the table.",numeric,sql-stats
+List the top five players by minutes played (Min).,"Based on the provided context, the information about minutes played (Min) is not included in the given data. Therefore, I cannot list the top five players by minutes played. The context only provides information on total points, assists, rebounds, games played, and points per game.",A list of five players with the highest minutes totals.,numeric,sql-stats
+Compare free throw efficiency (FT%) among top scorers.,"Structured stats answer: Sample row {'player_name': 'Shai Gilgeous-Alexander', 'team': 'OKC', 'points': 2485, 'rebounds_def': None, 'rebounds_off': None, 'assists': 486} (rows=50)",A short comparison noting which top scorers have higher FT%.,reasoning,sql-stats
+"From the Reddit posts, what qualities were praised in the Nuggets' run?","Based on the provided context, there is no information from Reddit posts about the qualities praised in the Nuggets' run. The context only contains data from an NBA season dataset and a starter corpus, but no Reddit posts or discussions. Therefore, I cannot answer the question concisely or cite sources from the given context.","Team cohesion, versatility, and consistent two-way impact were praised.",factual,pdf-text
+"Synthesize: Use stats (PTS, AST, REB) and Reddit context to argue MVP candidates.","Structured stats answer: Sample row {'player_name': 'Shai Gilgeous-Alexander', 'team': 'OKC', 'points': 2485, 'rebounds_def': None, 'rebounds_off': None, 'assists': 486} (rows=50)","Candidates like Nikola Jokic and Shai Gilgeous-Alexander, supported by strong box stats and qualitative impact.",multi-hop,hybrid
+Which team abbreviations appear most among the top 10 scorers?,"Structured stats answer: Sample row {'player_name': 'Shai Gilgeous-Alexander', 'team': 'OKC', 'points': 2485, 'rebounds_def': None, 'rebounds_off': None, 'assists': 486} (rows=50)","A small set of team codes (e.g., OKC, MIN, DEN) appearing in the top scorers list.",numeric,sql-stats
+Find players with high usage (USG%) and efficient shooting (TS%).,"Based on the provided context, we can identify players with high usage rates (USG%) and efficient shooting (True Shooting Percentage, TS%) by looking at their points per game (PPG) and the context provided. However, the context does not explicitly provide USG% or TS% data. Therefore, we can only infer based on the points per game and total points.
+
+1. **Shai Gilgeous-Alexander** (Oklahoma City Thunder):
+   - 2485 total points across 76 games, averaging 32.7 points per game.
+   - High usage is inferred from the high PPG, and efficiency can be assumed given the high scoring rate.
+
+2. **Giannis Antetokounmpo** (Milwaukee Bucks):
+   - 2485 total points across 67 games, averaging 30.4 points per game.
+   - High usage is inferred from the high PPG, and efficiency can be assumed given the high scoring rate.
+
+3. **Nikola Jokić** (Denver Nuggets):
+   - 2072 total points across 70 games, averaging 29.6 points per game.
+   - High usage is inferred from the high PPG, and efficiency can be assumed given the high scoring rate and high number of assists and rebounds.
+
+These players are likely to have high usage rates and efficient shooting based on their high points per game averages and total points. For precise USG% and TS%, additional data would be required.
+
+Source: [source=inputs/regular NBA.xlsx]",Players balancing high USG% with high TS% as per the workbook.,numeric,sql-stats
+Paraphrase: Summarize postseason surprises from Reddit discussions.,"I'm an NBA analyst, but I'm unable to access external websites like Reddit or other sources outside of the provided context. Therefore, I can't summarize postseason surprises from Reddit discussions. My responses are based solely on the information given in the context.","Unexpected team runs, standout role-player performances, and coaching adjustments were noted.",paraphrase,pdf-text
+What metrics in the workbook best support claims about defensive impact?,"Structured stats answer: Sample row {'player_name': 'Shai Gilgeous-Alexander', 'team': 'OKC', 'points': 2485, 'rebounds_def': None, 'rebounds_off': None, 'assists': 486} (rows=50)","DEFRTG, STL, BLK, and DREB provide a quantitative basis for defensive impact.",reasoning,sql-stats

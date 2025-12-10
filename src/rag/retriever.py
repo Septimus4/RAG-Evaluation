@@ -2,7 +2,9 @@
 from __future__ import annotations
 
 import logging
+import time
 from typing import List
+import time
 
 from .models import DocumentChunk, RetrievalResult
 from .vector_store import TfidfVectorStore
@@ -21,6 +23,7 @@ def build_retriever(documents: List[DocumentChunk], top_k: int = 5) -> TfidfVect
 
 
 def retrieve(query: str, store: TfidfVectorStore, top_k: int = 5) -> RetrievalResult:
+    t0 = time.perf_counter()
     docs, scores, latency_ms = store.search(query, top_k=top_k)
     if logfire:
         logfire.info("retrieval", query=query, top_k=top_k, latency_ms=latency_ms)
