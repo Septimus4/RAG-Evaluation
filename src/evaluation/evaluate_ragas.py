@@ -88,13 +88,24 @@ def _jaccard(a: set[str], b: set[str]) -> float:
     return inter / union
 
 
+def _dedupe_preserve_order(items: list[str]) -> list[str]:
+    seen: set[str] = set()
+    out: list[str] = []
+    for item in items:
+        if item in seen:
+            continue
+        seen.add(item)
+        out.append(item)
+    return out
+
+
 def _recall_precision_k(retrieved: list[str], expected: list[str], k: int = 5) -> tuple[float, float]:
     if not expected:
         return 0.0, 0.0
     exp = set(expected)
-    topk = retrieved[:k]
-    hit = len([s for s in topk if s in exp])
-    recall = hit / len(exp)
+    topk = _dedupe_preserve_order(retrieved)[:k]
+    hit = len(set(topk) & exp)
+    recall = hit / max(len(exp), 1)
     precision = hit / max(len(topk), 1)
     return recall, precision
 
@@ -103,6 +114,7 @@ def _mrr_ndcg(retrieved: list[str], expected: list[str]) -> tuple[float, float]:
     if not expected or not retrieved:
         return 0.0, 0.0
     exp = set(expected)
+    retrieved = _dedupe_preserve_order(retrieved)
     # MRR: first relevant rank reciprocal
     mrr = 0.0
     for i, s in enumerate(retrieved, start=1):
@@ -116,7 +128,7 @@ def _mrr_ndcg(retrieved: list[str], expected: list[str]) -> tuple[float, float]:
     for i, s in enumerate(retrieved, start=1):
         rel = 1.0 if s in exp else 0.0
         if rel:
-            dcg += rel / math.log2(i + 1)
+            dcg += 1.0 / math.log2(i + 1)
     # ideal: all relevant first
     for i in range(1, min(len(exp), len(retrieved)) + 1):
         idcg += 1.0 / math.log2(i + 1)
@@ -181,33 +193,49 @@ def run_dataset(dataset_path: Path, output_dir: Path, llm_config: LLMConfig) -> 
     metrics_df = pd.DataFrame(metrics)
     metrics_path = output_dir / f"rag_metrics_{datetime.now(timezone.utc).isoformat()}.csv"
     metrics_df.to_csv(metrics_path, index=False)
+    ragas_metrics_path: Optional[Path] = None
     if evaluate and answer_relevancy and Dataset:
         # Minimal evaluation example when ragas is installed
         try:
             ragas_llm = _build_ragas_llm()
             ragas_embeddings = _build_ragas_embeddings()
             if ragas_llm is None or ragas_embeddings is None:
-                raise RuntimeError("RAGAS dependencies unavailable")
-            hf_dataset = Dataset.from_dict({
-                "question": df["question"].tolist(),
-                "answer": df["model_answer"].tolist(),
-                "contexts": [[] for _ in range(len(df))],
-                "ground_truth": df["expected_answer"].fillna("").tolist(),
-            })
-            evaluation = evaluate(
-                hf_dataset,
-                metrics=[answer_relevancy, context_precision, faithfulness],
-                llm=ragas_llm,
-                embeddings=ragas_embeddings,
-            )
-            if hasattr(evaluation, "to_pandas"):
-                metrics_df = evaluation.to_pandas()
-            else:  # pragma: no cover - new ragas API surface
-                metrics_df = evaluation.to_dataframe()
-            metrics_path2 = output_dir / f"ragas_metrics_{datetime.now(timezone.utc).isoformat()}.csv"
-            metrics_df.to_csv(metrics_path2, index=False)
+                logging.info("Skipping RAGAS metrics (missing API key or embeddings provider).")
+            else:
+                hf_dataset = Dataset.from_dict({
+                    "question": df["question"].tolist(),
+                    "answer": df["model_answer"].tolist(),
+                    "contexts": [[] for _ in range(len(df))],
+                    "ground_truth": df["expected_answer"].fillna("").tolist(),
+                })
+                evaluation = evaluate(
+                    hf_dataset,
+                    metrics=[answer_relevancy, context_precision, faithfulness],
+                    llm=ragas_llm,
+                    embeddings=ragas_embeddings,
+                )
+                if hasattr(evaluation, "to_pandas"):
+                    ragas_df = evaluation.to_pandas()
+                else:  # pragma: no cover - new ragas API surface
+                    ragas_df = evaluation.to_dataframe()
+                ragas_metrics_path = output_dir / f"ragas_metrics_{datetime.now(timezone.utc).isoformat()}.csv"
+                ragas_df.to_csv(ragas_metrics_path, index=False)
         except Exception as exc:  # pragma: no cover
             logging.warning("RAGAS evaluation failed: %s", exc)
+
+    report_path = output_dir / "last_run_summary.md"
+    try:
+        write_markdown_summary(
+            result_path=result_path,
+            metrics_path=metrics_path,
+            ragas_metrics_path=ragas_metrics_path,
+            dataset_path=dataset_path,
+            model=llm_config.model,
+            output_path=report_path,
+        )
+    except Exception as exc:  # pragma: no cover
+        logging.warning("Failed to write markdown summary: %s", exc)
+
     info("evaluation.completed", dataset=str(dataset_path), rows=len(df), model=llm_config.model)
     return result_path
 
@@ -223,11 +251,23 @@ def main(
     llm_config = LLMConfig(model=model)
     result_path = run_dataset(dataset, output_dir, llm_config)
     typer.echo(f"Results written to {result_path}")
+    typer.echo(f"Summary written to {output_dir / 'last_run_summary.md'}")
 
 
 def _build_ragas_llm() -> Optional["BaseRagasLLM"]:
     if BaseRagasLLM is None:
         return None
+    # Keep evaluation behavior consistent with the main pipeline: allow `.env` keys.
+    try:
+        from dotenv import load_dotenv
+
+        dotenv_path = ROOT / ".env"
+        if dotenv_path.exists():
+            load_dotenv(dotenv_path=dotenv_path)
+        else:
+            load_dotenv()
+    except Exception:
+        pass
     api_key = os.environ.get("OPENAI_API_KEY") or os.environ.get("MISTRAL_API_KEY")
     if not api_key:
         return None
@@ -237,94 +277,7 @@ def _build_ragas_llm() -> Optional["BaseRagasLLM"]:
     try:
         from openai import OpenAI  # type: ignore
         from ragas.llms import llm_factory
-    except Exception as exc:  # pragma: no cover
-        logging.warning("OpenAI client unavailable for RAGAS metrics: %s", exc)
-        return None
-        # Removed duplicated metrics block
-        hallucination_risk = None
-        groundedness = None
-        if _st_model and np is not None:
-            try:
-                q_emb = _st_model.encode(item["question"], normalize_embeddings=True)
-                doc_texts = [d.text for d in ctx_docs]
-                if doc_texts:
-                    d_embs = _st_model.encode(doc_texts, normalize_embeddings=True)
-                    sims = [float(np.dot(q_emb, d)) for d in d_embs]
-                    query_doc_sim = float(np.mean(sims)) if sims else 0.0
-                    # Redundancy: avg pairwise similarity among docs
-                    if len(d_embs) > 1:
-                        pair_sims = []
-                        for i in range(len(d_embs)):
-                            for j in range(i + 1, len(d_embs)):
-                                pair_sims.append(float(np.dot(d_embs[i], d_embs[j])))
-                        redundancy = float(np.mean(pair_sims)) if pair_sims else 0.0
-                        diversity = 1.0 - redundancy
-                    # Hallucination risk: low similarity between answer and docs
-                    a_emb = _st_model.encode(answer.answer, normalize_embeddings=True)
-                    ans_sims = [float(np.dot(a_emb, d)) for d in d_embs]
-                    if ans_sims:
-                        max_ans_sim = max(ans_sims)
-                        hallucination_risk = float(1.0 - max_ans_sim)
-                        groundedness = float(np.mean(ans_sims))
-            except Exception:
-                pass
-        # Context integrity
-        total_ctx_chars = sum(len(d.text) for d in ctx_docs)
-        # Assume nominal 16k token window ~ 64k chars; utilization ratio
-        context_utilization = total_ctx_chars / 64000.0
-        contamination_rate = 1.0 - precision_at_k if k else 0.0
-        dedup_rate = 0.0
-        if ctx_docs:
-            seen_hashes = {}
-            dup = 0
-            for d in ctx_docs:
-                h = hash(d.text)
-                dup += 1 if h in seen_hashes else 0
-                seen_hashes[h] = True
-            dedup_rate = dup / k
-        # Passage freshness: use file mtime ages if sources are files
-        freshness_days = None
-        try:
-            ages = []
-            for s in retrieved_sources:
-                p = Path(s)
-                if p.exists():
-                    ages.append((datetime.now(timezone.utc) - datetime.fromtimestamp(p.stat().st_mtime, tz=timezone.utc)).total_seconds() / 86400.0)
-            if ages:
-                freshness_days = float(np.mean(ages)) if np is not None else sum(ages) / len(ages)
-        except Exception:
-            pass
-        # Generation metrics
-        faithfulness_proxy = groundedness if groundedness is not None else 0.0
-        gold = item.get("expected_answer") or ""
-        acc_exact = 1.0 if gold and gold.strip().lower() == (answer.answer or "").strip().lower() else 0.0
-        acc_substr = 1.0 if gold and gold.strip().lower() in (answer.answer or "").strip().lower() else 0.0
-        answer_len = len(answer.answer or "")
-        metrics_rows.append({
-            "question": item["question"],
-            "latency_ms": round(e2e_ms, 2),
-            # Retrieval Quality
-            "recall@k": round(recall_at_k, 4),
-            "precision@k": round(precision_at_k, 4),
-            "mrr": round(mrr, 4),
-            "ndcg": round(ndcg, 4),
-            "query_doc_similarity": round(query_doc_sim or 0.0, 4),
-            "redundancy": round(redundancy or 0.0, 4),
-            "diversity": round(diversity or 0.0, 4),
-            "retrieval_fail_rate": 1.0 if k == 0 else 0.0,
-            # Context Integrity
-            "context_utilization": round(context_utilization, 4),
-            "contamination_rate": round(contamination_rate, 4),
-            "hallucination_risk": round(hallucination_risk or 0.0, 4),
-            "freshness_days": round(freshness_days or 0.0, 2),
-            "dedup_rate": round(dedup_rate, 4),
-            # Generation Quality
-            "faithfulness_proxy": round(faithfulness_proxy, 4),
-            "groundedness_proxy": round(groundedness or 0.0, 4),
-            "accuracy_exact": acc_exact,
-            "accuracy_substr": acc_substr,
-            "answer_length": answer_len,
-        })
+
         client = OpenAI(
             api_key=os.environ.get("OPENAI_API_KEY"),
             base_url=os.environ.get("OPENAI_BASE_URL"),
@@ -338,6 +291,9 @@ def _build_ragas_llm() -> Optional["BaseRagasLLM"]:
 def _build_ragas_embeddings() -> Optional["BaseRagasEmbeddings"]:
     if BaseRagasEmbeddings is None:
         return None
+
+    _ensure_metadata_pathfinder_invalidate_caches_is_classmethod()
+
     model_name = os.environ.get("RAGAS_EMBEDDING_MODEL", "sentence-transformers/all-MiniLM-L6-v2")
     try:
         if LegacyHuggingfaceEmbeddings is not None:
@@ -357,6 +313,178 @@ def _build_ragas_embeddings() -> Optional["BaseRagasEmbeddings"]:
     if BaseRagasEmbeddings is not None and BaseRagasEmbedding is not None:
         return _ModernEmbeddingAdapter(delegate)
     return None
+
+
+def _ensure_metadata_pathfinder_invalidate_caches_is_classmethod() -> None:
+    """Work around a Python 3.12 build where MetadataPathFinder.invalidate_caches is not a @classmethod.
+
+    Some dependency stacks (notably HuggingFace) call `MetadataPathFinder.invalidate_caches()` with no args.
+    If the method isn't a classmethod, that raises:
+    `TypeError: ... missing 1 required positional argument: 'cls'`.
+
+    This patch is safe and local to the current interpreter process.
+    """
+
+    try:
+        from importlib.metadata import MetadataPathFinder
+    except Exception:  # pragma: no cover
+        return
+    raw = getattr(MetadataPathFinder, "__dict__", {}).get("invalidate_caches")
+    if raw is None:
+        return
+    if isinstance(raw, classmethod):
+        return
+    try:
+        MetadataPathFinder.invalidate_caches = classmethod(raw)  # type: ignore[assignment]
+    except Exception:  # pragma: no cover
+        return
+
+
+def write_markdown_summary(
+    *,
+    result_path: Path,
+    metrics_path: Path,
+    ragas_metrics_path: Optional[Path],
+    dataset_path: Path,
+    model: str,
+    output_path: Path,
+) -> None:
+    results_df = pd.read_csv(result_path)
+    metrics_df = pd.read_csv(metrics_path)
+
+    def _fmt_num(v: float) -> str:
+        try:
+            return f"{float(v):.4f}"
+        except Exception:
+            return "-"
+
+    def _describe_numeric(series: pd.Series) -> Dict[str, str]:
+        series = pd.to_numeric(series, errors="coerce").dropna()
+        if series.empty:
+            return {"mean": "-", "min": "-", "max": "-"}
+        return {
+            "mean": _fmt_num(series.mean()),
+            "min": _fmt_num(series.min()),
+            "max": _fmt_num(series.max()),
+        }
+
+    # Basic dataset descriptors
+    row_count = int(len(results_df))
+    categories = (
+        results_df["category"].fillna("(missing)").value_counts().to_dict()
+        if "category" in results_df.columns
+        else {}
+    )
+    types = (
+        results_df["type"].fillna("(missing)").value_counts().to_dict()
+        if "type" in results_df.columns
+        else {}
+    )
+
+    retrieval_cols = [
+        "recall@5",
+        "precision@5",
+        "mrr",
+        "ndcg",
+        "retrieval_latency_ms",
+        "retrieval_fail_rate",
+        "retrieval_diversity_ratio",
+    ]
+    context_cols = [
+        "context_window_utilization_chars",
+        "context_contamination_rate",
+        "deduplication_rate",
+    ]
+    generation_cols = [
+        "answer_length",
+        "response_latency_ms",
+    ]
+
+    def _section_table(cols: List[str]) -> str:
+        rows = []
+        for c in cols:
+            if c not in metrics_df.columns:
+                continue
+            stats = _describe_numeric(metrics_df[c])
+            rows.append((c, stats["mean"], stats["min"], stats["max"]))
+        if not rows:
+            return "(no columns found)\n"
+        out = "| metric | mean | min | max |\n|---|---:|---:|---:|\n"
+        out += "\n".join(f"| {m} | {mean} | {mn} | {mx} |" for (m, mean, mn, mx) in rows)
+        out += "\n"
+        return out
+
+    lines: List[str] = []
+    lines.append("# RAG Evaluation — Last Run Summary")
+    lines.append("")
+    lines.append(f"- Dataset: `{dataset_path}`")
+    lines.append(f"- Model: `{model}`")
+    lines.append(f"- Per-question results CSV: `{result_path}`")
+    lines.append(f"- Per-question metrics CSV: `{metrics_path}`")
+    if ragas_metrics_path is not None:
+        lines.append(f"- RAGAS metrics CSV: `{ragas_metrics_path}`")
+    lines.append("")
+
+    lines.append("## Dataset Overview")
+    lines.append("")
+    lines.append(f"This run contains **{row_count}** questions.")
+    if categories:
+        lines.append("")
+        lines.append("Category counts:")
+        lines.append("")
+        lines.append("| category | count |\n|---|---:|")
+        for k, v in categories.items():
+            lines.append(f"| {k} | {int(v)} |")
+    if types:
+        lines.append("")
+        lines.append("Type counts:")
+        lines.append("")
+        lines.append("| type | count |\n|---|---:|")
+        for k, v in types.items():
+            lines.append(f"| {k} | {int(v)} |")
+    lines.append("")
+
+    lines.append("## Retrieval Metrics")
+    lines.append("")
+    lines.append("The table below summarizes retrieval-related metrics across questions.")
+    lines.append("")
+    lines.append(_section_table(retrieval_cols))
+
+    lines.append("## Context Metrics")
+    lines.append("")
+    lines.append("The table below summarizes context-related metrics across questions.")
+    lines.append("")
+    lines.append(_section_table(context_cols))
+
+    lines.append("## Generation Metrics")
+    lines.append("")
+    lines.append("The table below summarizes generation-related metrics across questions.")
+    lines.append("")
+    lines.append(_section_table(generation_cols))
+
+    if ragas_metrics_path is not None:
+        try:
+            ragas_df = pd.read_csv(ragas_metrics_path)
+            lines.append("## RAGAS Metrics")
+            lines.append("")
+            numeric_cols = [c for c in ragas_df.columns if c.lower() not in {"question"}]
+            if numeric_cols:
+                # Describe each numeric column (some ragas outputs include strings)
+                out = "| metric | mean | min | max |\n|---|---:|---:|---:|\n"
+                rows = []
+                for c in numeric_cols:
+                    s = pd.to_numeric(ragas_df[c], errors="coerce")
+                    if s.notna().any():
+                        stats = _describe_numeric(s)
+                        rows.append((c, stats["mean"], stats["min"], stats["max"]))
+                if rows:
+                    out += "\n".join(f"| {m} | {mean} | {mn} | {mx} |" for (m, mean, mn, mx) in rows)
+                    out += "\n"
+                    lines.append(out)
+        except Exception:
+            pass
+
+    output_path.write_text("\n".join(lines) + "\n", encoding="utf-8")
 
 
 if __name__ == "__main__":
