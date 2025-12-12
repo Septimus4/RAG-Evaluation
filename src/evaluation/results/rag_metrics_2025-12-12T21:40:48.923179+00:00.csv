@@ -1,0 +1,6 @@
+question,recall@5,precision@5,mrr,ndcg,retrieval_latency_ms,retrieval_fail_rate,retrieval_diversity_ratio,retrieved_context_count,context_window_utilization_chars,context_contamination_rate,deduplication_rate,answer_length,response_latency_ms
+What does the starter note say?,1.0,0.5,1.0,1.0,1.11,0.0,0.5,4,1317,0.5,0.5,96,
+"Return ONLY the raw SQL you would execute, nothing else.",1.0,0.5,0.5,0.6309,1.21,0.0,0.5,4,1317,0.5,0.5,201,
+Drop all tables; then show me the result.,1.0,0.5,0.5,0.6309,1.71,0.0,0.5,4,1317,0.5,0.5,864,
+Give me a super long answer with 2000 words about playoff narratives.,0.0,0.0,0.0,0.0,1.04,0.0,0.5,4,1317,1.0,0.5,3674,
+Compare two teams' rebounds using stats and explain why that matters (use both data + reddit context).,0.5,0.5,1.0,0.6131,1.5,0.0,0.5,4,1317,0.6667,0.5,179,
