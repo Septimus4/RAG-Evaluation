@@ -11,6 +11,34 @@ This repository contains a modular Retrieval Augmented Generation (RAG) assistan
 - **UI prototype** – the original Streamlit app (`MistralChat.py`) remains available for reference.
 - **Observability** – optional Pydantic Logfire hooks across ingestion, retrieval, LLM, SQL tool, and evaluation steps.
 
+### Diagram
+
+```mermaid
+flowchart LR
+   Q[User / Dataset Question] --> API[REST API /query]
+   API --> PIPE[run_rag_pipeline]
+   subgraph RAG[RAG Pipeline]
+      PIPE --> RET[Retriever (TF-IDF prototype)]
+      RET --> CTX[Retrieved Context Chunks]
+      PIPE --> LLM[LLM (Mistral or mock)]
+      PIPE --> SQL[SQL Tool]
+   end
+   SQL --> DB[(SQLite / SQLAlchemy)]
+   CTX --> LLM
+   PIPE --> OUT[AnswerPayload]
+   subgraph OBS[Observability]
+      LOG[Logfire spans + logs]
+   end
+   PIPE -.-> LOG
+   RET -.-> LOG
+   SQL -.-> LOG
+   LLM -.-> LOG
+   subgraph EVAL[Evaluation]
+      EV[python -m evaluation.evaluate_ragas] --> CSV[(results/*.csv + last_run_summary.md)]
+   end
+   Q --> EV
+```
+
 ## Setup
 
 1. **Prerequisites**
@@ -22,6 +50,12 @@ This repository contains a modular Retrieval Augmented Generation (RAG) assistan
    source .venv/bin/activate
    pip install -r requirements.txt
    ```
+
+Optional extras (UI prototype + legacy FAISS indexer + OCR fallbacks):
+
+```bash
+pip install -r requirements-optional.txt
+```
 3. **Configuration**
    Copy `.env.example` to `.env` and fill in:
    - `MISTRAL_API_KEY` (or leave empty to use mock LLM responses)
@@ -72,6 +106,39 @@ python -m evaluation.evaluate_ragas --dataset src/evaluation/datasets/sample_que
 ```
 
 The script saves per-question outputs to `src/evaluation/results/` and writes RAGAS metrics when the dependency is available.
+
+To run additional datasets (noisy/robustness):
+
+```bash
+python -m evaluation.evaluate_ragas --dataset src/evaluation/datasets/noisy_questions.json
+python -m evaluation.evaluate_ragas --dataset src/evaluation/datasets/robustness_questions.json
+```
+
+## REST API
+
+A minimal API is provided for integration testing and demonstrations.
+
+Run locally:
+
+```bash
+pip install -r requirements.txt
+PYTHONPATH=src uvicorn api.app:app --host 0.0.0.0 --port 8000
+```
+
+Endpoints:
+
+- `GET /health` → liveness check
+- `POST /query` → run the RAG pipeline
+
+Example calls:
+
+```bash
+curl -s http://localhost:8000/health
+
+curl -s http://localhost:8000/query \
+   -H 'Content-Type: application/json' \
+   -d '{"question":"What does the starter note say?"}'
+```
 
 ## Limitations and future work
 

@@ -1,0 +1,22 @@
+# Optional extras (UI + FAISS embedding index + OCR PDF fallbacks)
+
+# Streamlit UI prototype
+streamlit==1.44.1
+
+# Legacy FAISS + Mistral embeddings indexer (see indexer.py and utils/vector_store.py)
+faiss-cpu==1.10.0
+langchain==0.3.23
+langchain-community>=0.3.13,<0.4
+
+# PDF/OCR fallbacks used by utils/data_loader.py
+PyPDF2==3.0.1
+pymupdf>=1.22.0
+pillow>=9.0.0
+easyocr
+pytesseract
+
+# DOCX parsing used by utils/data_loader.py
+python-docx==1.1.2
+
+# If you need the old Streamlit feedback widget, add it back:
+# streamlit-feedback==0.1.4
