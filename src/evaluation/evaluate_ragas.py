@@ -140,6 +140,7 @@ def run_dataset(dataset_path: Path, output_dir: Path, llm_config: LLMConfig) -> 
     data = load_dataset(dataset_path)
     outputs: List[Dict[str, Any]] = []
     metrics: List[Dict[str, Any]] = []
+    ragas_contexts: List[List[str]] = []
     # Prepare retriever for retrieval-only metrics
     retriever = get_retriever_from_dir(Path("inputs"))
     with span("evaluation.run_dataset", dataset=str(dataset_path), model=llm_config.model, rows=len(data)):
@@ -147,6 +148,7 @@ def run_dataset(dataset_path: Path, output_dir: Path, llm_config: LLMConfig) -> 
             # Retrieve for retrieval metrics
             retrieval = retrieve(item["question"], retriever)
             retrieved_sources = [doc.source for doc in retrieval.documents]
+            retrieved_contexts = [doc.text for doc in retrieval.documents]
             expected_sources = item.get("reference_context") or []
             r_at_k, p_at_k = _recall_precision_k(retrieved_sources, expected_sources, k=5)
             mrr, ndcg = _mrr_ndcg(retrieved_sources, expected_sources)
@@ -167,6 +169,7 @@ def run_dataset(dataset_path: Path, output_dir: Path, llm_config: LLMConfig) -> 
                 "category": item.get("category"),
                 "type": item.get("type"),
             })
+            ragas_contexts.append(retrieved_contexts)
             metrics.append({
                 "question": item["question"],
                 # Retrieval Quality
@@ -177,6 +180,7 @@ def run_dataset(dataset_path: Path, output_dir: Path, llm_config: LLMConfig) -> 
                 "retrieval_latency_ms": round(retrieval.latency_ms or 0.0, 2),
                 "retrieval_fail_rate": retrieval_fail,
                 "retrieval_diversity_ratio": round(unique_ratio, 4),
+                "retrieved_context_count": int(len(retrieval.documents)),
                 # Context Integrity
                 "context_window_utilization_chars": ctx_size,
                 "context_contamination_rate": round(contamination, 4),
@@ -205,7 +209,7 @@ def run_dataset(dataset_path: Path, output_dir: Path, llm_config: LLMConfig) -> 
                 hf_dataset = Dataset.from_dict({
                     "question": df["question"].tolist(),
                     "answer": df["model_answer"].tolist(),
-                    "contexts": [[] for _ in range(len(df))],
+                    "contexts": ragas_contexts if len(ragas_contexts) == len(df) else [[] for _ in range(len(df))],
                     "ground_truth": df["expected_answer"].fillna("").tolist(),
                 })
                 evaluation = evaluate(
@@ -389,6 +393,7 @@ def write_markdown_summary(
         "retrieval_latency_ms",
         "retrieval_fail_rate",
         "retrieval_diversity_ratio",
+        "retrieved_context_count",
     ]
     context_cols = [
         "context_window_utilization_chars",
@@ -399,6 +404,31 @@ def write_markdown_summary(
         "answer_length",
         "response_latency_ms",
     ]
+
+    targets_retrieval: dict[str, float] = {
+        "recall@5": 0.70,
+        "precision@5": 0.30,
+        "ndcg": 0.60,
+    }
+    targets_ragas: dict[str, float] = {
+        "answer_relevancy": 0.60,
+        "faithfulness": 0.50,
+        "context_precision": 0.30,
+    }
+
+    def _mean(series_name: str, frame: pd.DataFrame) -> float | None:
+        if series_name not in frame.columns:
+            return None
+        s = pd.to_numeric(frame[series_name], errors="coerce").dropna()
+        if s.empty:
+            return None
+        return float(s.mean())
+
+    def _fmt_target_line(metric: str, mean_value: float | None, target: float) -> str:
+        if mean_value is None:
+            return f"- {metric}: mean=- (target≥{target:.2f})"
+        status = "OK" if mean_value >= target else "Needs work"
+        return f"- {metric}: mean={mean_value:.4f} (target≥{target:.2f}) → {status}"
 
     def _section_table(cols: List[str]) -> str:
         rows = []
@@ -462,6 +492,17 @@ def write_markdown_summary(
     lines.append("")
     lines.append(_section_table(generation_cols))
 
+    lines.append("## Targets & Interpretation")
+    lines.append("")
+    lines.append("The targets below are **initial, heuristic thresholds** to help interpret results.")
+    lines.append("They should be adjusted once you define business KPIs and gather more realistic queries.")
+    lines.append("")
+    lines.append("Retrieval targets (based on `rag_metrics_*.csv` means):")
+    lines.append("")
+    for metric, target in targets_retrieval.items():
+        lines.append(_fmt_target_line(metric, _mean(metric, metrics_df), target))
+    lines.append("")
+
     if ragas_metrics_path is not None:
         try:
             ragas_df = pd.read_csv(ragas_metrics_path)
@@ -481,6 +522,11 @@ def write_markdown_summary(
                     out += "\n".join(f"| {m} | {mean} | {mn} | {mx} |" for (m, mean, mn, mx) in rows)
                     out += "\n"
                     lines.append(out)
+
+            lines.append("RAGAS targets (based on `ragas_metrics_*.csv` means):")
+            lines.append("")
+            for metric, target in targets_ragas.items():
+                lines.append(_fmt_target_line(metric, _mean(metric, ragas_df), target))
         except Exception:
             pass
 
