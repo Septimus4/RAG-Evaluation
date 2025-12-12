@@ -10,10 +10,7 @@ import typer
 from rag.retriever import build_retriever
 from rag.vector_store import TfidfVectorStore
 
-try:  # pragma: no cover
-    import logfire
-except Exception:  # pragma: no cover
-    logfire = None
+from observability.logfire_setup import configure_logfire, info
 
 from .ingestion import RawDocument, load_text_documents, to_chunks
 
@@ -25,12 +22,12 @@ app = typer.Typer(add_completion=False)
 def build_index(input_dir: Path = typer.Option(Path("inputs"), help="Directory with raw text files."),
                 top_k: int = typer.Option(5, help="Retriever default top-k."),
                 output_path: Optional[Path] = typer.Option(None, help="Persisted index path (not used for TF-IDF prototype).")):
+    configure_logfire()
     raw_docs = load_text_documents(input_dir)
     chunks = to_chunks(raw_docs)
     retriever = build_retriever(chunks, top_k=top_k)
     logging.info("Index ready with %s documents", len(retriever.documents))
-    if logfire:
-        logfire.info("indexing.build_index", documents=len(retriever.documents))
+    info("indexing.build_index", documents=len(retriever.documents), input_dir=str(input_dir))
     typer.echo("Index built in memory. Persisting is not required for TF-IDF prototype.")
 
 
@@ -51,4 +48,5 @@ def get_retriever_from_dir(input_dir: Path = Path("inputs")) -> TfidfVectorStore
 
 if __name__ == "__main__":
     logging.basicConfig(level=logging.INFO)
+    configure_logfire()
     app()
