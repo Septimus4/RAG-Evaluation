@@ -10,10 +10,8 @@ from sqlalchemy.exc import SQLAlchemyError
 
 from db.connection import get_engine
 from rag.models import SQLQuery, SQLResult, SQLResultRow
-try:  # pragma: no cover
-    import logfire
-except Exception:  # pragma: no cover
-    logfire = None
+
+from observability.logfire_setup import configure_logfire, info, span
 
 
 SQL_FEW_SHOTS = """
@@ -37,6 +35,7 @@ class SQLTool:
     def __init__(self, database_url: str | None = None, row_limit: int = 50):
         self.engine = get_engine(database_url)
         self.row_limit = row_limit
+        configure_logfire()
 
     def _coerce_query(self, candidate: Any) -> SQLQuery:
         """Normalise legacy inputs into an ``SQLQuery`` instance."""
@@ -92,29 +91,29 @@ class SQLTool:
         sql, params = self.build_sql(parsed)
         start = time.perf_counter()
         rows = []
-        try:
-            with self.engine.begin() as conn:
-                rows = list(conn.execute(text(sql), params).mappings())
-        except SQLAlchemyError as exc:
-            latency_ms = (time.perf_counter() - start) * 1000
-            # Fallback to simplified stats_flat if relational tables not present
+        with span("sql.query", sql_preview=sql[:180], limit=self.row_limit):
             try:
-                fallback_sql = "SELECT player_name, team, points, rebounds_def, rebounds_off, assists FROM stats_flat LIMIT :limit"
-                params2 = {"limit": self.row_limit}
                 with self.engine.begin() as conn:
-                    rows = list(conn.execute(text(fallback_sql), params2).mappings())
-                sql = fallback_sql
-            except Exception:
-                logging.getLogger(__name__).warning("SQL query failed; returning empty result", exc_info=exc)
-                if logfire:
-                    logfire.info(
+                    rows = list(conn.execute(text(sql), params).mappings())
+            except SQLAlchemyError as exc:
+                latency_ms = (time.perf_counter() - start) * 1000
+                # Fallback to simplified stats_flat if relational tables not present
+                try:
+                    fallback_sql = "SELECT player_name, team, points, rebounds_def, rebounds_off, assists FROM stats_flat LIMIT :limit"
+                    params2 = {"limit": self.row_limit}
+                    with self.engine.begin() as conn:
+                        rows = list(conn.execute(text(fallback_sql), params2).mappings())
+                    sql = fallback_sql
+                except Exception:
+                    logging.getLogger(__name__).warning("SQL query failed; returning empty result", exc_info=exc)
+                    info(
                         "sql_tool.run_query_error",
-                        sql=sql,
+                        sql_preview=sql[:180],
                         latency_ms=latency_ms,
                         rows=0,
                         error=str(exc),
                     )
-                return SQLResult(query=sql, rows=[], latency_ms=latency_ms)
+                    return SQLResult(query=sql, rows=[], latency_ms=latency_ms)
 
         # If primary query returned no rows, attempt fallback to stats_flat as a secondary source
         if not rows:
@@ -128,13 +127,12 @@ class SQLTool:
                 pass
 
         latency_ms = (time.perf_counter() - start) * 1000
-        if logfire:
-            logfire.info(
-                "sql_tool.run_query",
-                sql=sql,
-                latency_ms=latency_ms,
-                rows=len(rows),
-            )
+        info(
+            "sql_tool.run_query",
+            sql_preview=sql[:180],
+            latency_ms=latency_ms,
+            rows=len(rows),
+        )
         result_rows = [SQLResultRow(columns=list(row.keys()), values=list(row.values())) for row in rows]
         return SQLResult(query=sql, rows=result_rows, latency_ms=latency_ms)
 

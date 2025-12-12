@@ -1,16 +1,30 @@
 # indexer.py
 import argparse
 import logging
+import sys
+from pathlib import Path
 from typing import Optional
 
 from utils.config import INPUT_DIR # INPUT_DATA_URL (décommentez si besoin)
 from utils.data_loader import download_and_extract_zip, load_and_parse_files
 from utils.vector_store import VectorStoreManager
 
+ROOT = Path(__file__).resolve().parent
+src_path = ROOT / "src"
+if str(src_path) not in sys.path:
+    sys.path.insert(0, str(src_path))
+
+try:  # pragma: no cover
+    from observability.logfire_setup import configure_logfire
+except Exception:  # pragma: no cover
+    configure_logfire = None
+
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 
 def run_indexing(input_directory: str, data_url: Optional[str] = None):
     """Exécute le processus complet d'indexation."""
+    if configure_logfire:
+        configure_logfire()
     logging.info("--- Démarrage du processus d'indexation ---")
 
     # --- Étape 1: Téléchargement et Extraction (Optionnel) ---

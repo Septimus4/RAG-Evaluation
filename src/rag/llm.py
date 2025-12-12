@@ -10,16 +10,14 @@ from pydantic import BaseModel
 
 from .models import AnswerPayload, LLMInput
 
+from observability.logfire_setup import configure_logfire, info, span
+
 try:  # pragma: no cover
     from mistralai import Mistral
 except Exception:  # pragma: no cover
     MistralClient = None
     ChatMessage = None
 
-try:  # pragma: no cover
-    import logfire
-except Exception:  # pragma: no cover
-    logfire = None
 
 
 class LLMConfig(BaseModel):
@@ -45,40 +43,41 @@ class LLMService:
 
     def generate(self, payload: LLMInput) -> AnswerPayload:
         start = time.perf_counter()
+        configure_logfire()
         used_mock = False
         text: str
-        if self.client:
-            try:
-                response = self.client.chat.complete(
-                    model=self.config.model,
-                    messages=[
-                        {"role": "system", "content": "You are a basketball analyst. Use the context to answer."},
-                        {"role": "user", "content": self._build_prompt(payload)},
-                    ],
-                    temperature=self.config.temperature,
-                )
-                text = self._extract_response_text(response)
-                if not text:
-                    logging.debug("Empty response from Mistral; falling back to mock output")
+        with span("llm.generate", model=self.config.model, context_count=len(payload.context)):
+            if self.client:
+                try:
+                    response = self.client.chat.complete(
+                        model=self.config.model,
+                        messages=[
+                            {"role": "system", "content": "You are a basketball analyst. Use the context to answer."},
+                            {"role": "user", "content": self._build_prompt(payload)},
+                        ],
+                        temperature=self.config.temperature,
+                    )
+                    text = self._extract_response_text(response)
+                    if not text:
+                        logging.debug("Empty response from Mistral; falling back to mock output")
+                        text = self._mock_response(payload)
+                        used_mock = True
+                except Exception as exc:
+                    logging.warning("Mistral chat failed; falling back to mock responses: %s", exc)
+                    self.client = None
                     text = self._mock_response(payload)
                     used_mock = True
-            except Exception as exc:
-                logging.warning("Mistral chat failed; falling back to mock responses: %s", exc)
-                self.client = None
+            else:
                 text = self._mock_response(payload)
                 used_mock = True
-        else:
-            text = self._mock_response(payload)
-            used_mock = True
         latency_ms = (time.perf_counter() - start) * 1000
-        if logfire:
-            logfire.info(
-                "llm.generate",
-                model=self.config.model,
-                latency_ms=latency_ms,
-                used_mock=used_mock,
-                context_count=len(payload.context),
-            )
+        info(
+            "llm.generate",
+            model=self.config.model,
+            latency_ms=latency_ms,
+            used_mock=used_mock,
+            context_count=len(payload.context),
+        )
         return AnswerPayload(
             answer=text,
             context_documents=list(payload.context),

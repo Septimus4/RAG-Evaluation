@@ -23,10 +23,7 @@ from rag.pipeline import run_rag_pipeline
 from rag.retriever import retrieve
 from data_pipeline.indexing import get_retriever_from_dir
 
-try:  # pragma: no cover
-    import logfire
-except Exception:  # pragma: no cover
-    logfire = None
+from observability.logfire_setup import configure_logfire, info, span
 
 try:  # pragma: no cover
     from ragas import evaluate
@@ -76,21 +73,6 @@ if BaseRagasEmbeddings is not None and BaseRagasEmbedding is not None:
 
 
 app = typer.Typer(add_completion=False)
-
-
-def _configure_logfire():
-    if not logfire:
-        return
-    token = os.environ.get("LOGFIRE_TOKEN")
-    if not token:
-        return
-    if getattr(logfire, "_rag_configured", False):  # type: ignore[attr-defined]
-        return
-    try:
-        logfire.configure(token=token)
-        setattr(logfire, "_rag_configured", True)
-    except Exception as exc:  # pragma: no cover - logfire optional
-        logging.debug("Unable to configure logfire: %s", exc)
 
 
 def load_dataset(path: Path) -> List[Dict[str, Any]]:
@@ -148,48 +130,49 @@ def run_dataset(dataset_path: Path, output_dir: Path, llm_config: LLMConfig) -> 
     metrics: List[Dict[str, Any]] = []
     # Prepare retriever for retrieval-only metrics
     retriever = get_retriever_from_dir(Path("inputs"))
-    for item in data:
-        # Retrieve for retrieval metrics
-        retrieval = retrieve(item["question"], retriever)
-        retrieved_sources = [doc.source for doc in retrieval.documents]
-        expected_sources = item.get("reference_context") or []
-        r_at_k, p_at_k = _recall_precision_k(retrieved_sources, expected_sources, k=5)
-        mrr, ndcg = _mrr_ndcg(retrieved_sources, expected_sources)
-        # Diversity vs redundancy: unique sources ratio
-        unique_ratio = (len(set(retrieved_sources)) / max(len(retrieved_sources), 1)) if retrieved_sources else 0.0
-        retrieval_fail = 1.0 if not retrieved_sources else 0.0
-        # Context integrity approximations
-        ctx_size = sum(len(doc.text) for doc in retrieval.documents)
-        # Simple contamination proxy: 1 - jaccard between retrieved sources and expected sources
-        contamination = 1.0 - _jaccard(set(retrieved_sources), set(expected_sources))
-        dedup_rate = 1.0 - unique_ratio
-        # Run full pipeline for generation metrics
-        answer: AnswerPayload = run_rag_pipeline(item["question"], llm_config=llm_config)
-        outputs.append({
-            "question": item["question"],
-            "model_answer": answer.answer,
-            "expected_answer": item.get("expected_answer"),
-            "category": item.get("category"),
-            "type": item.get("type"),
-        })
-        metrics.append({
-            "question": item["question"],
-            # Retrieval Quality
-            "recall@5": round(r_at_k, 4),
-            "precision@5": round(p_at_k, 4),
-            "mrr": round(mrr, 4),
-            "ndcg": round(ndcg, 4),
-            "retrieval_latency_ms": round(retrieval.latency_ms or 0.0, 2),
-            "retrieval_fail_rate": retrieval_fail,
-            "retrieval_diversity_ratio": round(unique_ratio, 4),
-            # Context Integrity
-            "context_window_utilization_chars": ctx_size,
-            "context_contamination_rate": round(contamination, 4),
-            "deduplication_rate": round(dedup_rate, 4),
-            # Generation Quality (partial)
-            "answer_length": len(answer.answer or ""),
-            "response_latency_ms": None,  # available inside pipeline logs but not returned; keep placeholder
-        })
+    with span("evaluation.run_dataset", dataset=str(dataset_path), model=llm_config.model, rows=len(data)):
+        for item in data:
+            # Retrieve for retrieval metrics
+            retrieval = retrieve(item["question"], retriever)
+            retrieved_sources = [doc.source for doc in retrieval.documents]
+            expected_sources = item.get("reference_context") or []
+            r_at_k, p_at_k = _recall_precision_k(retrieved_sources, expected_sources, k=5)
+            mrr, ndcg = _mrr_ndcg(retrieved_sources, expected_sources)
+            # Diversity vs redundancy: unique sources ratio
+            unique_ratio = (len(set(retrieved_sources)) / max(len(retrieved_sources), 1)) if retrieved_sources else 0.0
+            retrieval_fail = 1.0 if not retrieved_sources else 0.0
+            # Context integrity approximations
+            ctx_size = sum(len(doc.text) for doc in retrieval.documents)
+            # Simple contamination proxy: 1 - jaccard between retrieved sources and expected sources
+            contamination = 1.0 - _jaccard(set(retrieved_sources), set(expected_sources))
+            dedup_rate = 1.0 - unique_ratio
+            # Run full pipeline for generation metrics
+            answer: AnswerPayload = run_rag_pipeline(item["question"], llm_config=llm_config)
+            outputs.append({
+                "question": item["question"],
+                "model_answer": answer.answer,
+                "expected_answer": item.get("expected_answer"),
+                "category": item.get("category"),
+                "type": item.get("type"),
+            })
+            metrics.append({
+                "question": item["question"],
+                # Retrieval Quality
+                "recall@5": round(r_at_k, 4),
+                "precision@5": round(p_at_k, 4),
+                "mrr": round(mrr, 4),
+                "ndcg": round(ndcg, 4),
+                "retrieval_latency_ms": round(retrieval.latency_ms or 0.0, 2),
+                "retrieval_fail_rate": retrieval_fail,
+                "retrieval_diversity_ratio": round(unique_ratio, 4),
+                # Context Integrity
+                "context_window_utilization_chars": ctx_size,
+                "context_contamination_rate": round(contamination, 4),
+                "deduplication_rate": round(dedup_rate, 4),
+                # Generation Quality (partial)
+                "answer_length": len(answer.answer or ""),
+                "response_latency_ms": None,  # available inside pipeline logs but not returned; keep placeholder
+            })
     df = pd.DataFrame(outputs)
     output_dir.mkdir(parents=True, exist_ok=True)
     result_path = output_dir / f"ragas_results_{datetime.now(timezone.utc).isoformat()}.csv"
@@ -225,12 +208,7 @@ def run_dataset(dataset_path: Path, output_dir: Path, llm_config: LLMConfig) -> 
             metrics_df.to_csv(metrics_path2, index=False)
         except Exception as exc:  # pragma: no cover
             logging.warning("RAGAS evaluation failed: %s", exc)
-    if logfire:
-        logfire.info(
-            "evaluation.run_dataset",
-            dataset=str(dataset_path),
-            rows=len(df),
-        )
+    info("evaluation.completed", dataset=str(dataset_path), rows=len(df), model=llm_config.model)
     return result_path
 
 
@@ -241,7 +219,7 @@ def main(
     model: str = typer.Option("mistral-small-latest"),
 ):
     logging.basicConfig(level=logging.INFO)
-    _configure_logfire()
+    configure_logfire()
     llm_config = LLMConfig(model=model)
     result_path = run_dataset(dataset, output_dir, llm_config)
     typer.echo(f"Results written to {result_path}")

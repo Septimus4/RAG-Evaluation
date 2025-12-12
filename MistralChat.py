@@ -1,10 +1,22 @@
 # MistralChat.py (version RAG)
 import logging
 import os
+import sys
+from pathlib import Path
 
 import streamlit as st
 from dotenv import load_dotenv
 from mistralai import Mistral, MistralError
+
+ROOT = Path(__file__).resolve().parent
+src_path = ROOT / "src"
+if str(src_path) not in sys.path:
+    sys.path.insert(0, str(src_path))
+
+try:  # pragma: no cover
+    from observability.logfire_setup import configure_logfire
+except Exception:  # pragma: no cover
+    configure_logfire = None
 
 # --- Importations depuis vos modules ---
 try:
@@ -21,6 +33,9 @@ except ImportError as e:
 # --- Configuration du Logging ---
 # Note: Streamlit peut avoir sa propre gestion de logs. Configurer ici est une bonne pratique.
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(module)s - %(message)s')
+
+if configure_logfire:
+    configure_logfire()
 
 # --- Configuration de l'API Mistral ---
 api_key = MISTRAL_API_KEY

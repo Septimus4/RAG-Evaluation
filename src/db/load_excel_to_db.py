@@ -13,17 +13,7 @@ from db.connection import get_engine
 from db.models import MatchRow, PlayerRow, ReportRow, StatRow
 from db.schema import Base, Match, Player, Report, StatLine, StatsFlat, StatsNBA, Team, AnalysisRow
 
-try:  # pragma: no cover
-    import logfire
-    try:
-        # Configure logfire with sensible defaults if not already configured
-        # This prevents LogfireNotConfiguredWarning during ingestion.
-        logfire.configure()
-    except Exception:
-        # If configuration fails (e.g., missing env), keep module available
-        pass
-except Exception:  # pragma: no cover
-    logfire = None
+from observability.logfire_setup import configure_logfire, info
 
 
 app = typer.Typer(add_completion=False)
@@ -198,6 +188,7 @@ def load(
     database_url: str = typer.Option(None, help="Database connection URL"),
     dry_run: bool = typer.Option(False, help="Validate only, do not write to DB"),
 ):
+    configure_logfire()
     engine = get_engine(database_url)
     Base.metadata.create_all(engine)
     session_factory = Session(bind=engine)
@@ -219,8 +210,7 @@ def load(
         if dry_run:
             continue
         inserter(session, valid)
-        if logfire:
-            logfire.info("ingestion.table", table=name, valid=len(valid), errors=len(errors))
+        info("ingestion.table", table=name, valid=len(valid), errors=len(errors))
     if dry_run:
         typer.echo("Dry run completed; no data written.")
         session.rollback()
@@ -239,6 +229,7 @@ def load_workbook(
     database_url: str = typer.Option(None, help="Database connection URL"),
     dry_run: bool = typer.Option(False, help="Validate only, do not write to DB"),
 ):
+    configure_logfire()
     """Load structured data from a single workbook with multiple sheets."""
     # Coerce Typer OptionInfo to None when called programmatically
     if not isinstance(database_url, str):
@@ -275,8 +266,7 @@ def load_workbook(
                 logging.info("Falling back to stats_flat ingestion for sheet '%s'", sheet)
                 if not dry_run:
                     insert_stats_flat(session, df)
-                if logfire:
-                    logfire.info("ingestion.table_flat", table="stats_flat", valid=len(df), errors=len(errors))
+                info("ingestion.table_flat", table="stats_flat", valid=len(df), errors=len(errors))
             continue
         else:
             valid, errors = validate_rows(df, model)
@@ -286,8 +276,7 @@ def load_workbook(
             if dry_run:
                 continue
             inserter(session, valid)
-        if logfire:
-            logfire.info("ingestion.table", table=name, valid=len(valid), errors=len(errors))
+            info("ingestion.table", table=name, valid=len(valid), errors=len(errors))
     if dry_run:
         typer.echo("Dry run completed; no data written.")
         session.rollback()
@@ -306,6 +295,7 @@ def load_workbook_programmatic(
     dry_run: bool = False,
 ):
     """Programmatic variant of workbook loader without Typer Option types."""
+    configure_logfire()
     engine = get_engine(database_url)
     Base.metadata.create_all(engine)
     session_factory = Session(bind=engine)
@@ -334,14 +324,12 @@ def load_workbook_programmatic(
                 logging.info("Using stats_flat ingestion for '%s'", sheet)
                 if not dry_run:
                     insert_stats_flat(session, df)
-                if logfire:
-                    logfire.info("ingestion.table_flat", table="stats_flat", valid=len(df), errors=0)
+                info("ingestion.table_flat", table="stats_flat", valid=len(df), errors=0)
             else:
                 logging.info("Mapping '%s' into StatsNBA with wide header support", sheet)
                 if not dry_run:
                     insert_stats_nba(session, df)
-                if logfire:
-                    logfire.info("ingestion.table", table="stats_nba", valid=len(df), errors=0)
+                info("ingestion.table", table="stats_nba", valid=len(df), errors=0)
             continue
 
         # Non-stats: check minimal required columns
@@ -358,15 +346,13 @@ def load_workbook_programmatic(
                 logging.info("Ingesting teams from '%s'", sheet)
                 if not dry_run:
                     insert_teams_from_equipe(session, df)
-                if logfire:
-                    logfire.info("ingestion.table", table="teams", valid=len(df), errors=0)
+                info("ingestion.table", table="teams", valid=len(df), errors=0)
                 continue
             if sheet in ("Analyse", "Analyse Vide"):
                 logging.info("Ingesting analysis rows from '%s'", sheet)
                 if not dry_run:
                     insert_analysis_rows(session, df, sheet)
-                if logfire:
-                    logfire.info("ingestion.table", table="analysis_rows", valid=len(df), errors=0)
+                info("ingestion.table", table="analysis_rows", valid=len(df), errors=0)
                 continue
             logging.error("Sheet '%s' missing required columns for '%s': need %s", sheet, name, sorted(req))
             continue
@@ -377,8 +363,7 @@ def load_workbook_programmatic(
                 inserter(session, valid)
         else:
             logging.error("Sheet '%s' provided no valid rows for '%s'. Errors: %s", sheet, name, errors[:5])
-        if logfire:
-            logfire.info("ingestion.table", table=name, valid=len(valid), errors=len(errors))
+        info("ingestion.table", table=name, valid=len(valid), errors=len(errors))
     if dry_run:
         logging.info("Dry run completed; no data written.")
         session.rollback()
@@ -389,4 +374,5 @@ def load_workbook_programmatic(
 
 if __name__ == "__main__":
     logging.basicConfig(level=logging.INFO)
+    configure_logfire()
     app()
