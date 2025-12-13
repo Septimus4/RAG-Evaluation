@@ -44,6 +44,12 @@ logs/
 # Fichiers de données
 data/
 
+# Evaluation artifacts (generated)
+src/evaluation/results/*.csv
+
+# Local scratch files
+note.txt
+
 # Jupyter Notebook
 .ipynb_checkpoints
 sportsee.db
