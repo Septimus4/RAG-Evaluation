@@ -1,10 +1,10 @@
 # RAG Evaluation — Last Run Summary
 
-- Dataset: `src/evaluation/datasets/robustness_questions.json`
+- Dataset: `src/evaluation/datasets/noisy_questions.json`
 - Model: `mistral-small-latest`
-- Per-question results CSV: `/workspaces/RAG-Evaluation/src/evaluation/results/ragas_results_2025-12-13T00:21:05.495375+00:00.csv`
-- Per-question metrics CSV: `/workspaces/RAG-Evaluation/src/evaluation/results/rag_metrics_2025-12-13T00:21:05.495375+00:00.csv`
-- RAGAS metrics CSV: `/workspaces/RAG-Evaluation/src/evaluation/results/ragas_metrics_2025-12-13T00:21:05.495375+00:00.csv`
+- Per-question results CSV: `/workspaces/RAG-Evaluation/src/evaluation/results/ragas_results_2025-12-13T00:11:09.581161+00:00.csv`
+- Per-question metrics CSV: `/workspaces/RAG-Evaluation/src/evaluation/results/rag_metrics_2025-12-13T00:11:09.581161+00:00.csv`
+- RAGAS metrics CSV: `/workspaces/RAG-Evaluation/src/evaluation/results/ragas_metrics_2025-12-13T00:11:09.581161+00:00.csv`
 
 ## Dataset Overview
 
@@ -14,14 +14,14 @@ Category counts:
 
 | category | count |
 |---|---:|
-| robustness | 5 |
+| noisy | 4 |
+| robustness | 1 |
 
 Type counts:
 
 | type | count |
 |---|---:|
-| sql-stats | 2 |
-| txt | 1 |
+| sql-stats | 3 |
 | pdf-text | 1 |
 | hybrid | 1 |
 
@@ -33,9 +33,9 @@ The table below summarizes retrieval-related metrics across questions.
 |---|---:|---:|---:|
 | recall@5 | 0.7000 | 0.0000 | 1.0000 |
 | precision@5 | 0.4000 | 0.0000 | 0.5000 |
-| mrr | 0.6000 | 0.0000 | 1.0000 |
-| ndcg | 0.5750 | 0.0000 | 1.0000 |
-| retrieval_latency_ms | 1.0540 | 0.9200 | 1.2300 |
+| mrr | 0.8000 | 0.0000 | 1.0000 |
+| ndcg | 0.7226 | 0.0000 | 1.0000 |
+| retrieval_latency_ms | 1.1480 | 0.9400 | 1.4300 |
 | retrieval_fail_rate | 0.0000 | 0.0000 | 0.0000 |
 | retrieval_diversity_ratio | 0.5000 | 0.5000 | 0.5000 |
 | retrieved_context_count | 4.0000 | 4.0000 | 4.0000 |
@@ -56,7 +56,7 @@ The table below summarizes generation-related metrics across questions.
 
 | metric | mean | min | max |
 |---|---:|---:|---:|
-| answer_length | 1778.0000 | 96.0000 | 7727.0000 |
+| answer_length | 315.6000 | 105.0000 | 726.0000 |
 | response_latency_ms | - | - | - |
 
 ## Targets & Interpretation
@@ -68,18 +68,18 @@ Retrieval targets (based on `rag_metrics_*.csv` means):
 
 - recall@5: mean=0.7000 (target≥0.70) → OK
 - precision@5: mean=0.4000 (target≥0.30) → OK
-- ndcg: mean=0.5750 (target≥0.60) → Needs work
+- ndcg: mean=0.7226 (target≥0.60) → OK
 
 ## RAGAS Metrics
 
 | metric | mean | min | max |
 |---|---:|---:|---:|
-| answer_relevancy | 0.4647 | 0.1069 | 1.0000 |
-| context_precision | 0.1000 | 0.0000 | 0.5000 |
-| faithfulness | 0.7381 | 0.0000 | 1.0000 |
+| answer_relevancy | 0.4142 | 0.0000 | 0.7777 |
+| context_precision | 0.5500 | 0.0000 | 1.0000 |
+| faithfulness | 0.8882 | 0.5000 | 1.0000 |
 
 RAGAS targets (based on `ragas_metrics_*.csv` means):
 
-- answer_relevancy: mean=0.4647 (target≥0.60) → Needs work
-- faithfulness: mean=0.7381 (target≥0.50) → OK
-- context_precision: mean=0.1000 (target≥0.30) → Needs work
+- answer_relevancy: mean=0.4142 (target≥0.60) → Needs work
+- faithfulness: mean=0.8882 (target≥0.50) → OK
+- context_precision: mean=0.5500 (target≥0.30) → OK
