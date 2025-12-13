@@ -114,6 +114,11 @@ python -m evaluation.evaluate_ragas --dataset src/evaluation/datasets/noisy_ques
 python -m evaluation.evaluate_ragas --dataset src/evaluation/datasets/robustness_questions.json
 ```
 
+## Documentation
+
+- Project docs live in [docs/README.md](docs/README.md).
+- Aggregated evaluation metrics report: [REPORT_RAGAS_EVALUATION_METRICS.md](REPORT_RAGAS_EVALUATION_METRICS.md).
+
 ## REST API
 
 A minimal API is provided for integration testing and demonstrations.

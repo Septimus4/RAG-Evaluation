@@ -141,6 +141,7 @@ def run_dataset(dataset_path: Path, output_dir: Path, llm_config: LLMConfig) -> 
     outputs: List[Dict[str, Any]] = []
     metrics: List[Dict[str, Any]] = []
     ragas_contexts: List[List[str]] = []
+    run_ts = datetime.now(timezone.utc).isoformat()
     # Prepare retriever for retrieval-only metrics
     retriever = get_retriever_from_dir(Path("inputs"))
     with span("evaluation.run_dataset", dataset=str(dataset_path), model=llm_config.model, rows=len(data)):
@@ -191,11 +192,11 @@ def run_dataset(dataset_path: Path, output_dir: Path, llm_config: LLMConfig) -> 
             })
     df = pd.DataFrame(outputs)
     output_dir.mkdir(parents=True, exist_ok=True)
-    result_path = output_dir / f"ragas_results_{datetime.now(timezone.utc).isoformat()}.csv"
+    result_path = output_dir / f"ragas_results_{run_ts}.csv"
     df.to_csv(result_path, index=False)
     # Write custom metrics report
     metrics_df = pd.DataFrame(metrics)
-    metrics_path = output_dir / f"rag_metrics_{datetime.now(timezone.utc).isoformat()}.csv"
+    metrics_path = output_dir / f"rag_metrics_{run_ts}.csv"
     metrics_df.to_csv(metrics_path, index=False)
     ragas_metrics_path: Optional[Path] = None
     if evaluate and answer_relevancy and Dataset:
@@ -222,12 +223,14 @@ def run_dataset(dataset_path: Path, output_dir: Path, llm_config: LLMConfig) -> 
                     ragas_df = evaluation.to_pandas()
                 else:  # pragma: no cover - new ragas API surface
                     ragas_df = evaluation.to_dataframe()
-                ragas_metrics_path = output_dir / f"ragas_metrics_{datetime.now(timezone.utc).isoformat()}.csv"
+                ragas_metrics_path = output_dir / f"ragas_metrics_{run_ts}.csv"
                 ragas_df.to_csv(ragas_metrics_path, index=False)
         except Exception as exc:  # pragma: no cover
             logging.warning("RAGAS evaluation failed: %s", exc)
 
     report_path = output_dir / "last_run_summary.md"
+    dataset_stem = dataset_path.stem
+    dataset_report_path = output_dir / f"summary_{dataset_stem}_{run_ts}.md"
     try:
         write_markdown_summary(
             result_path=result_path,
@@ -236,6 +239,14 @@ def run_dataset(dataset_path: Path, output_dir: Path, llm_config: LLMConfig) -> 
             dataset_path=dataset_path,
             model=llm_config.model,
             output_path=report_path,
+        )
+        write_markdown_summary(
+            result_path=result_path,
+            metrics_path=metrics_path,
+            ragas_metrics_path=ragas_metrics_path,
+            dataset_path=dataset_path,
+            model=llm_config.model,
+            output_path=dataset_report_path,
         )
     except Exception as exc:  # pragma: no cover
         logging.warning("Failed to write markdown summary: %s", exc)
