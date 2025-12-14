@@ -15,28 +15,35 @@ This repository contains a modular Retrieval Augmented Generation (RAG) assistan
 
 ```mermaid
 flowchart LR
-   Q[User / Dataset Question] --> API[REST API /query]
-   API --> PIPE[run_rag_pipeline]
-   subgraph RAG[RAG Pipeline]
-      PIPE --> RET[Retriever (TF-IDF prototype)]
-      RET --> CTX[Retrieved Context Chunks]
-      PIPE --> LLM[LLM (Mistral or mock)]
-      PIPE --> SQL[SQL Tool]
-   end
-   SQL --> DB[(SQLite / SQLAlchemy)]
-   CTX --> LLM
-   PIPE --> OUT[AnswerPayload]
-   subgraph OBS[Observability]
-      LOG[Logfire spans + logs]
-   end
-   PIPE -.-> LOG
-   RET -.-> LOG
-   SQL -.-> LOG
-   LLM -.-> LOG
-   subgraph EVAL[Evaluation]
-      EV[python -m evaluation.evaluate_ragas] --> CSV[(results/*.csv + last_run_summary.md)]
-   end
-   Q --> EV
+  Q[User / Dataset Question] --> API[REST API /query]
+  API --> PIPE[run_rag_pipeline]
+
+  subgraph RAG[RAG Pipeline]
+    direction TB
+    PIPE --> RET[Retriever (TF-IDF prototype)]
+    RET --> CTX[Retrieved Context Chunks]
+    PIPE --> SQL[SQL Tool]
+    PIPE --> LLM[LLM (Mistral or mock)]
+    CTX --> LLM
+  end
+
+  SQL --> DB[(SQLite / SQLAlchemy)]
+  LLM --> OUT[AnswerPayload]
+
+  subgraph OBS[Observability]
+    direction TB
+    LOG[Logfire spans + logs]
+  end
+  PIPE -.-> LOG
+  RET  -.-> LOG
+  SQL  -.-> LOG
+  LLM  -.-> LOG
+
+  subgraph EVAL[Evaluation]
+    direction TB
+    EV[python -m evaluation.evaluate_ragas] --> CSV[(results/*.csv + last_run_summary.md)]
+  end
+  Q --> EV
 ```
 
 ## Setup
